@@ -11,6 +11,7 @@ type AuthResult = {
 
 type AuthContextValue = {
   user: AuthUser | null;
+  loading: boolean;
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string, fullName: string) => Promise<AuthResult>;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      loading: false,
       isAdmin,
       signIn: async (email) => {
         const existingUser = registeredUsers.find((entry) => entry.email === email);
@@ -69,6 +71,7 @@ export function useAuth() {
   if (!context) {
     return {
       user: null,
+      loading: false,
       isAdmin: false,
       signIn: async () => ({ error: null }),
       signUp: async () => ({ error: null }),
