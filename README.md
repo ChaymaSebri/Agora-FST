@@ -152,6 +152,14 @@ npm install
 npm run dev
 ```
 
+Dépendances frontend installées:
+
+- `clsx`
+- `tailwind-merge`
+- `lucide-react`
+- `@vitejs/plugin-react-swc` (faster JSX transpiler for Vite)
+
+
 ## Scripts disponibles
 
 Backend:
