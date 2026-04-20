@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EventCard, Event } from "@/components/EventCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus, Calendar as CalendarIcon } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  cancelEventParticipation,
+  deleteEvent,
+  fetchEvents,
+  listEventParticipations,
+  registerToEvent,
+} from "@/services/api";
 import {
   Select,
   SelectContent,
@@ -12,75 +20,135 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const mockEvents: Event[] = [
-  {
-    id: "1",
-    title: "Atelier Intelligence Artificielle",
-    description: "Introduction pratique aux concepts fondamentaux de l'IA et du machine learning.",
-    date: "18 Déc 2025",
-    time: "14:00",
-    location: "Salle A302",
-    attendees: 35,
-    maxAttendees: 40,
-    type: "workshop",
-  },
-  {
-    id: "2",
-    title: "Conférence Entrepreneuriat",
-    description: "Rencontre avec des entrepreneurs à succès et présentation d'opportunités de financement.",
-    date: "22 Déc 2025",
-    time: "10:00",
-    location: "Amphithéâtre Principal",
-    attendees: 180,
-    maxAttendees: 200,
-    type: "conference",
-  },
-  {
-    id: "3",
-    title: "Réunion Club Robotique",
-    description: "Point d'avancement sur les projets en cours et planification du trimestre.",
-    date: "20 Déc 2025",
-    time: "18:00",
-    location: "Lab Robotique",
-    attendees: 15,
-    maxAttendees: 20,
-    type: "meeting",
-  },
-  {
-    id: "4",
-    title: "Hackathon Innovation Sociale",
-    description: "48h pour développer des solutions innovantes aux défis sociaux locaux.",
-    date: "10 Jan 2026",
-    time: "09:00",
-    location: "Campus Innovation Hub",
-    attendees: 95,
-    maxAttendees: 100,
-    type: "competition",
-  },
-  {
-    id: "5",
-    title: "Atelier Design Thinking",
-    description: "Apprenez la méthodologie design thinking à travers des cas pratiques.",
-    date: "25 Déc 2025",
-    time: "15:00",
-    location: "Salle B205",
-    attendees: 28,
-    maxAttendees: 30,
-    type: "workshop",
-  },
-];
-
 const Events = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  const [events, setEvents] = useState<Event[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [registrationMap, setRegistrationMap] = useState<Record<string, boolean>>({});
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false);
+  const fallbackUtilisateurId = import.meta.env.VITE_UTILISATEUR_ID || "000000000000000000000001";
 
-  const filteredEvents = mockEvents.filter((event) => {
-    const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         event.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterType === "all" || event.type === filterType;
-    return matchesSearch && matchesFilter;
-  });
+  useEffect(() => {
+    const loadEvents = async () => {
+      try {
+        setIsLoading(true);
+        const { items } = await fetchEvents({
+          search: searchTerm || undefined,
+          type: filterType === "all" ? undefined : filterType,
+          limit: 50,
+          sortBy: "date",
+          sortOrder: "asc",
+        });
+        setEvents(items);
+      } catch (error) {
+        toast({
+          title: "Erreur",
+          description: "Impossible de charger les événements.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadEvents();
+  }, [searchTerm, filterType, toast]);
+
+  useEffect(() => {
+    const loadRegistrationState = async () => {
+      if (events.length === 0) {
+        setRegistrationMap({});
+        return;
+      }
+
+      try {
+        setIsLoadingRegistrations(true);
+        const entries = await Promise.all(
+          events.map(async (event) => {
+            try {
+              const data = await listEventParticipations(event.id);
+              const isRegistered = (data.items || []).some(
+                (item) => item.utilisateurId === fallbackUtilisateurId,
+              );
+              return [event.id, isRegistered];
+            } catch (error) {
+              return [event.id, false];
+            }
+          }),
+        );
+
+        setRegistrationMap(Object.fromEntries(entries));
+      } finally {
+        setIsLoadingRegistrations(false);
+      }
+    };
+
+    loadRegistrationState();
+  }, [events, fallbackUtilisateurId]);
+
+  const filteredEvents = events;
+
+  const handleDeleteEvent = async (id: string) => {
+    try {
+      await deleteEvent(id);
+      setEvents((prev) => prev.filter((event) => event.id !== id));
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "La suppression de l'événement a échoué.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRegisterEvent = async (id: string) => {
+    try {
+      await registerToEvent(id, { utilisateurId: fallbackUtilisateurId });
+      setEvents((prev) =>
+        prev.map((event) =>
+          event.id === id ? { ...event, attendees: event.attendees + 1 } : event,
+        ),
+      );
+      setRegistrationMap((prev) => ({ ...prev, [id]: true }));
+      toast({
+        title: "Inscription réussie",
+        description: "Vous êtes inscrit à cet événement.",
+      });
+    } catch (error) {
+      toast({
+        title: "Inscription impossible",
+        description: "Vérifiez votre utilisateur ou la capacité de l'événement.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelRegistration = async (id: string) => {
+    try {
+      await cancelEventParticipation(id, fallbackUtilisateurId);
+      setEvents((prev) =>
+        prev.map((event) =>
+          event.id === id
+            ? { ...event, attendees: Math.max(0, event.attendees - 1) }
+            : event,
+        ),
+      );
+      setRegistrationMap((prev) => ({ ...prev, [id]: false }));
+      toast({
+        title: "Inscription annulée",
+        description: "Votre inscription a été annulée.",
+      });
+    } catch (error) {
+      toast({
+        title: "Annulation impossible",
+        description: "Impossible d'annuler cette inscription.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
@@ -115,17 +183,29 @@ const Events = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les types</SelectItem>
-              <SelectItem value="workshop">Ateliers</SelectItem>
+              <SelectItem value="atelier">Ateliers</SelectItem>
               <SelectItem value="conference">Conférences</SelectItem>
-              <SelectItem value="meeting">Réunions</SelectItem>
-              <SelectItem value="competition">Compétitions</SelectItem>
+              <SelectItem value="hackathon">Hackathons</SelectItem>
+              <SelectItem value="sortie">Sorties</SelectItem>
+              <SelectItem value="autre">Autres</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
+        {(isLoading || isLoadingRegistrations) && (
+          <div className="py-8 text-center text-muted-foreground">Chargement des événements...</div>
+        )}
+
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.map((event) => (
-            <EventCard key={event.id} event={event} />
+            <EventCard
+              key={event.id}
+              event={event}
+              onDelete={handleDeleteEvent}
+              onRegister={handleRegisterEvent}
+              onCancelRegistration={handleCancelRegistration}
+              isRegistered={Boolean(registrationMap[event.id])}
+            />
           ))}
         </div>
 

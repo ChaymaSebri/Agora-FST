@@ -1,8 +1,20 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Users as UsersIcon, Pencil } from "lucide-react";
+import { Calendar, MapPin, Users as UsersIcon, Pencil, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 export interface Event {
   id: string;
@@ -13,31 +25,54 @@ export interface Event {
   location: string;
   attendees: number;
   maxAttendees: number;
-  type: "workshop" | "conference" | "meeting" | "competition";
+  type: "atelier" | "conference" | "hackathon" | "sortie" | "autre";
 }
 
 interface EventCardProps {
   event: Event;
+  onDelete?: (id: string) => void;
+  onRegister?: (id: string) => void;
+  onCancelRegistration?: (id: string) => void;
+  isRegistered?: boolean;
 }
 
 const typeColors = {
-  workshop: "bg-accent text-accent-foreground",
+  atelier: "bg-accent text-accent-foreground",
   conference: "bg-primary text-primary-foreground",
-  meeting: "bg-secondary text-secondary-foreground",
-  competition: "bg-gradient-accent text-accent-foreground",
+  hackathon: "bg-gradient-accent text-accent-foreground",
+  sortie: "bg-secondary text-secondary-foreground",
+  autre: "bg-muted text-foreground",
 };
 
 const typeLabels = {
-  workshop: "Atelier",
+  atelier: "Atelier",
   conference: "Conférence",
-  meeting: "Réunion",
-  competition: "Compétition",
+  hackathon: "Hackathon",
+  sortie: "Sortie",
+  autre: "Autre",
 };
 
-export const EventCard = ({ event }: EventCardProps) => {
+export const EventCard = ({
+  event,
+  onDelete,
+  onRegister,
+  onCancelRegistration,
+  isRegistered = false,
+}: EventCardProps) => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const spotsLeft = event.maxAttendees - event.attendees;
-  
+
+  const handleDelete = () => {
+    if (onDelete) {
+      onDelete(event.id);
+    }
+    toast({
+      title: "Événement supprimé",
+      description: `"${event.title}" a été supprimé avec succès.`,
+    });
+  };
+
   return (
     <Card className="group hover:shadow-hover transition-all duration-300 border-border hover:border-primary/50">
       <CardHeader>
@@ -76,11 +111,18 @@ export const EventCard = ({ event }: EventCardProps) => {
         
         <div className="flex gap-2">
           <Button 
-            variant={spotsLeft === 0 ? "outline" : "default"}
+            variant={isRegistered ? "outline" : spotsLeft === 0 ? "outline" : "default"}
             className="flex-1"
-            disabled={spotsLeft === 0}
+            disabled={spotsLeft === 0 && !isRegistered}
+            onClick={() => {
+              if (isRegistered) {
+                onCancelRegistration?.(event.id);
+                return;
+              }
+              onRegister?.(event.id);
+            }}
           >
-            {spotsLeft === 0 ? "Complet" : "S'inscrire"}
+            {isRegistered ? "Annuler inscription" : spotsLeft === 0 ? "Complet" : "S'inscrire"}
           </Button>
           <Button
             variant="outline"
@@ -89,6 +131,27 @@ export const EventCard = ({ event }: EventCardProps) => {
           >
             <Pencil className="w-4 h-4" />
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive hover:text-destructive-foreground">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Supprimer l'événement</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Êtes-vous sûr de vouloir supprimer "{event.title}" ? Cette action est irréversible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Supprimer
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </CardContent>
     </Card>
