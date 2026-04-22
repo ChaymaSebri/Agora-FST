@@ -542,4 +542,51 @@ describe('Events API integration', () => {
     expect(response.body.success).toBe(false);
     expect(response.body.error.code).toBe('FORBIDDEN');
   });
+
+  test('co-organizer club can update event: PATCH /api/events/:id returns 200', async () => {
+    const ownerClub = await createClubUser();
+    const coOrganizerClub = await createClubUser();
+
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+      overrides: {
+        coOrganizerClubIds: [coOrganizerClub.clubId],
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(coOrganizerClub))
+      .send({ titre: 'Event modifie par co-organisateur' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+
+    const updated = await Evenement.findById(event._id);
+    expect(updated.titre).toBe('Event modifie par co-organisateur');
+  });
+
+  test('co-organizer club can delete event: DELETE /api/events/:id returns 200', async () => {
+    const ownerClub = await createClubUser();
+    const coOrganizerClub = await createClubUser();
+
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+      overrides: {
+        coOrganizerClubIds: [coOrganizerClub.clubId],
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(coOrganizerClub));
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+
+    const deleted = await Evenement.findById(event._id);
+    expect(deleted).toBeNull();
+  });
 });

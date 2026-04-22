@@ -1,7 +1,6 @@
 const router = require('express').Router();
+const clubsController = require('../controllers/clubs.controller');
 
-router.get('/', (req, res) => {
-  res.json({ message: 'Clubs route placeholder' });
-});
+router.get('/', clubsController.listClubs);
 
 module.exports = router;

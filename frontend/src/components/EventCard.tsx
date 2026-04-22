@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Users as UsersIcon, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Calendar, MapPin, Users as UsersIcon, Pencil, Trash2, Loader2, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
@@ -28,6 +28,9 @@ export interface Event {
   type: "atelier" | "conference" | "hackathon" | "sortie" | "autre";
   organisateurId?: string;
   clubId?: string;
+  clubName?: string | null;
+  coOrganizerClubIds?: string[];
+  coOrganizerClubNames?: string[];
 }
 
 interface EventCardProps {
@@ -72,6 +75,13 @@ export const EventCard = ({
   const navigate = useNavigate();
   const attendees = event.participantsCount ?? event.attendees;
   const spotsLeft = event.maxAttendees - attendees;
+  const organizerClubNames = Array.from(
+    new Set(
+      [event.clubName, ...(event.coOrganizerClubNames || [])]
+        .filter((name): name is string => Boolean(name && String(name).trim()))
+        .map((name) => String(name).trim()),
+    ),
+  );
   const isBusy = isDeleting || isRegistering || isCancelling;
   const actionLabel = isDeleting
     ? "Suppression..."
@@ -130,6 +140,21 @@ export const EventCard = ({
             <UsersIcon className="w-4 h-4 text-primary" />
             <span>{attendees}/{event.maxAttendees} participants</span>
           </div>
+          {organizerClubNames.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Building2 className="w-4 h-4 text-primary" />
+                <span>Clubs organisateurs</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {organizerClubNames.map((clubName) => (
+                  <Badge key={clubName} variant="secondary" className="text-xs">
+                    {clubName}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         
         <div className="flex gap-2">

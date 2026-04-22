@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { ApiError, fetchEventById, updateEvent } from "@/services/api";
+import { ApiError, fetchClubs, fetchEventById, updateEvent } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 const eventSchema = z.object({
   title: z.string().min(3, "Le titre doit contenir au moins 3 caractères").max(100),
@@ -25,7 +26,11 @@ const EditEvent = () => {
   const { id } = useParams<{ id: string }>();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingEvent, setIsLoadingEvent] = useState(true);
+  const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [clubs, setClubs] = useState<Array<{ id: string; nom: string }>>([]);
+  const [coOrganizerClubIds, setCoOrganizerClubIds] = useState<string[]>([]);
+  const [selectedClubToAdd, setSelectedClubToAdd] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
@@ -36,7 +41,25 @@ const EditEvent = () => {
 
   const navigate = useNavigate();
   const { toast } = useToast();
-  const fallbackOrganisateurId = import.meta.env.VITE_ORGANISATEUR_ID || "000000000000000000000001";
+  const { user } = useAuth();
+  const currentClubId = String((user as { clubId?: string } | null)?.clubId || "");
+
+  useEffect(() => {
+    const loadClubs = async () => {
+      try {
+        setIsLoadingClubs(true);
+        const items = await fetchClubs();
+        setClubs(items.map((club) => ({ id: club.id, nom: club.nom })));
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : "Impossible de charger la liste des clubs.";
+        toast({ title: "Erreur", description: message, variant: "destructive" });
+      } finally {
+        setIsLoadingClubs(false);
+      }
+    };
+
+    loadClubs();
+  }, [toast]);
 
   useEffect(() => {
     const loadEvent = async () => {
@@ -56,6 +79,7 @@ const EditEvent = () => {
         setTime(event.time);
         setLocation(event.location);
         setMaxAttendees(String(event.maxAttendees || 0));
+        setCoOrganizerClubIds(Array.isArray(event.coOrganizerClubIds) ? event.coOrganizerClubIds : []);
       } catch (error) {
         const message = error instanceof ApiError ? error.message : "Événement introuvable.";
         setLoadError(message);
@@ -67,6 +91,34 @@ const EditEvent = () => {
 
     loadEvent();
   }, [id, navigate, toast]);
+
+  const selectableClubs = useMemo(
+    () => clubs.filter((club) => club.id !== currentClubId),
+    [clubs, currentClubId],
+  );
+
+  const selectedCoOrganizerClubs = useMemo(
+    () => selectableClubs.filter((club) => coOrganizerClubIds.includes(club.id)),
+    [selectableClubs, coOrganizerClubIds],
+  );
+
+  const remainingCoOrganizerClubs = useMemo(
+    () => selectableClubs.filter((club) => !coOrganizerClubIds.includes(club.id)),
+    [selectableClubs, coOrganizerClubIds],
+  );
+
+  const addCoOrganizerClub = (clubId: string) => {
+    if (!clubId) return;
+
+    setCoOrganizerClubIds((current) => (
+      current.includes(clubId) ? current : [...current, clubId]
+    ));
+    setSelectedClubToAdd("");
+  };
+
+  const removeCoOrganizerClub = (clubId: string) => {
+    setCoOrganizerClubIds((current) => current.filter((id) => id !== clubId));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +141,7 @@ const EditEvent = () => {
         time,
         location,
         maxAttendees,
-        organisateurId: fallbackOrganisateurId,
+        coOrganizerClubIds,
       });
 
       toast({ title: "Événement modifié", description: "L'événement a été mis à jour avec succès !" });
@@ -197,6 +249,48 @@ const EditEvent = () => {
                     <Input id="maxAttendees" type="number" className="pl-10" value={maxAttendees} onChange={(e) => setMaxAttendees(e.target.value)} required min="1" max="1000" />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Clubs co-organisateurs (optionnel)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Les clubs sélectionnés pourront aussi modifier et supprimer cet événement.
+                </p>
+                <Select
+                  value={selectedClubToAdd || undefined}
+                  onValueChange={addCoOrganizerClub}
+                  disabled={isLoadingClubs || remainingCoOrganizerClubs.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        isLoadingClubs
+                          ? "Chargement des clubs..."
+                          : remainingCoOrganizerClubs.length === 0
+                            ? "Aucun autre club disponible"
+                            : "Choisir un club co-organisateur"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {remainingCoOrganizerClubs.map((club) => (
+                      <SelectItem key={club.id} value={club.id}>{club.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {selectedCoOrganizerClubs.length > 0 ? (
+                  <div className="rounded-md border border-border p-3 space-y-2">
+                    {selectedCoOrganizerClubs.map((club) => (
+                      <div key={club.id} className="flex items-center justify-between gap-3 text-sm">
+                        <span>{club.nom}</span>
+                        <Button type="button" variant="outline" size="sm" onClick={() => removeCoOrganizerClub(club.id)}>
+                          Retirer
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex gap-4 pt-4">

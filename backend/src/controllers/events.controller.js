@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Evenement, ParticipationEvenement, Utilisateur } = require('../models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club } = require('../models');
 
 const EVENT_TYPES = ['conference', 'atelier', 'hackathon', 'sortie', 'autre'];
 const ACTIVE_PARTICIPATION_STATUSES = ['inscrit', 'confirme', 'present'];
@@ -44,6 +44,25 @@ function isValidDateString(value) {
 
 function normalizeEvent(doc, participantsCount = 0) {
   const source = typeof doc.toObject === 'function' ? doc.toObject() : doc;
+  const clubSource = source.clubId;
+  const coOrganizerSources = Array.isArray(source.coOrganizerClubIds) ? source.coOrganizerClubIds : [];
+  const clubId = clubSource && typeof clubSource === 'object' && clubSource._id
+    ? clubSource._id.toString()
+    : (clubSource ? clubSource.toString() : null);
+  const clubName = clubSource && typeof clubSource === 'object' ? (clubSource.nom || null) : null;
+  const coOrganizerClubIds = coOrganizerSources
+    .map((club) => {
+      if (!club) return null;
+      if (typeof club === 'object' && club._id) {
+        return club._id.toString();
+      }
+      return String(club);
+    })
+    .filter(Boolean);
+  const coOrganizerClubNames = coOrganizerSources
+    .map((club) => (club && typeof club === 'object' ? club.nom : null))
+    .filter(Boolean);
+
   return {
     id: source._id.toString(),
     titre: source.titre,
@@ -55,6 +74,10 @@ function normalizeEvent(doc, participantsCount = 0) {
     participantsCount,
     type: source.type,
     organisateurId: source.organisateurId,
+    clubId,
+    clubName,
+    coOrganizerClubIds,
+    coOrganizerClubNames,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
   };
@@ -94,11 +117,42 @@ function isEventOwnedByRequesterClub(event, req) {
     return false;
   }
 
+  const requesterClubId = String(req.user.clubId);
+
   if (event.clubId) {
-    return String(event.clubId) === String(req.user.clubId);
+    const mainClubId = event.clubId._id ? String(event.clubId._id) : String(event.clubId);
+    if (mainClubId === requesterClubId) {
+      return true;
+    }
+  }
+
+  const coOrganizerClubIds = Array.isArray(event.coOrganizerClubIds)
+    ? event.coOrganizerClubIds.map((club) => (club && club._id ? String(club._id) : String(club)))
+    : [];
+
+  if (coOrganizerClubIds.includes(requesterClubId)) {
+    return true;
   }
 
   return String(event.organisateurId) === String(req.user._id);
+}
+
+function normalizeCoOrganizerClubIds(rawClubIds, ownerClubId) {
+  if (!Array.isArray(rawClubIds)) {
+    return [];
+  }
+
+  const ownerId = String(ownerClubId);
+  const unique = new Set();
+
+  rawClubIds.forEach((clubId) => {
+    if (!clubId) return;
+    const normalized = String(clubId).trim();
+    if (!normalized || normalized === ownerId) return;
+    unique.add(normalized);
+  });
+
+  return Array.from(unique);
 }
 
 function isTransactionSupportError(error) {
@@ -248,6 +302,17 @@ function validateEventPayload(payload, { partial = false } = {}) {
     }
   }
 
+  if (payload.coOrganizerClubIds !== undefined) {
+    if (!Array.isArray(payload.coOrganizerClubIds)) {
+      errors.push('coOrganizerClubIds must be an array of ObjectId');
+    } else {
+      const invalidClubId = payload.coOrganizerClubIds.find((clubId) => !mongoose.Types.ObjectId.isValid(clubId));
+      if (invalidClubId) {
+        errors.push('coOrganizerClubIds contains invalid ObjectId');
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -294,6 +359,8 @@ async function listEvents(req, res, next) {
 
     const [items, totalItems] = await Promise.all([
       Evenement.find(filter)
+        .populate('clubId', 'nom')
+        .populate('coOrganizerClubIds', 'nom')
         .sort({ [sortBy]: sortOrder })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -348,7 +415,9 @@ async function getEventById(req, res, next) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
 
-    const event = await Evenement.findById(id);
+    const event = await Evenement.findById(id)
+      .populate('clubId', 'nom')
+      .populate('coOrganizerClubIds', 'nom');
 
     if (!event) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
@@ -386,6 +455,19 @@ async function createEvent(req, res, next) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
 
+    const coOrganizerClubIds = normalizeCoOrganizerClubIds(payload.coOrganizerClubIds, req.user.clubId);
+    if (coOrganizerClubIds.length > 0) {
+      const existingClubsCount = await Club.countDocuments({ _id: { $in: coOrganizerClubIds } });
+      if (existingClubsCount !== coOrganizerClubIds.length) {
+        return sendError(
+          res,
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          'Some coOrganizerClubIds do not exist',
+        );
+      }
+    }
+
     const created = await Evenement.create({
       titre: payload.titre.trim(),
       description: payload.description,
@@ -396,6 +478,7 @@ async function createEvent(req, res, next) {
       type: payload.type,
       organisateurId: req.user._id,
       clubId: req.user.clubId,
+      coOrganizerClubIds,
     });
 
     return sendSuccess(res, 201, {
@@ -448,7 +531,7 @@ async function updateEvent(req, res, next) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
 
-    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type'];
+    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds'];
     const update = {};
     updatableFields.forEach((field) => {
       if (payload[field] !== undefined) {
@@ -470,6 +553,22 @@ async function updateEvent(req, res, next) {
 
     if (update.capacite !== undefined) {
       update.capacite = Number(update.capacite);
+    }
+
+    if (update.coOrganizerClubIds !== undefined) {
+      update.coOrganizerClubIds = normalizeCoOrganizerClubIds(update.coOrganizerClubIds, existingEvent.clubId);
+
+      if (update.coOrganizerClubIds.length > 0) {
+        const existingClubsCount = await Club.countDocuments({ _id: { $in: update.coOrganizerClubIds } });
+        if (existingClubsCount !== update.coOrganizerClubIds.length) {
+          return sendError(
+            res,
+            400,
+            ERROR_CODES.VALIDATION_ERROR,
+            'Some coOrganizerClubIds do not exist',
+          );
+        }
+      }
     }
 
     if (Object.keys(update).length === 0) {

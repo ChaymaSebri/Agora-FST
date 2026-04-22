@@ -149,11 +149,16 @@ const evenementSchema = new Schema(
       ref: 'Club',
       required: true,
     },
+    coOrganizerClubIds: [{
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+    }],
   },
   { timestamps: true }
 );
 
 evenementSchema.index({ clubId: 1, date: -1 });
+evenementSchema.index({ coOrganizerClubIds: 1, date: -1 });
 evenementSchema.index({ date: -1 });
 
 const participationEvenementSchema = new Schema(

@@ -31,6 +31,16 @@ const UI_TO_API_TYPE = {
   autre: 'autre',
 };
 
+export function toUiClub(item) {
+  return {
+    id: item.id,
+    nom: item.nom || '',
+    description: item.description || '',
+    specialite: item.specialite || '',
+    statut: item.statut || 'actif',
+  };
+}
+
 function toUiEvent(item) {
   const rawDate = item?.date ? new Date(item.date) : null;
   const isValidDate = rawDate && !Number.isNaN(rawDate.getTime());
@@ -49,6 +59,9 @@ function toUiEvent(item) {
     type: item.type || 'autre',
     organisateurId: item.organisateurId,
     clubId: item.clubId,
+    clubName: item.clubName || null,
+    coOrganizerClubIds: Array.isArray(item.coOrganizerClubIds) ? item.coOrganizerClubIds : [],
+    coOrganizerClubNames: Array.isArray(item.coOrganizerClubNames) ? item.coOrganizerClubNames : [],
   };
 }
 
@@ -111,6 +124,16 @@ export async function fetchEventById(id) {
   }
 }
 
+export async function fetchClubs() {
+  try {
+    const response = await api.get('/clubs');
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiClub);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
 export async function createEvent(payload) {
   const body = {
     titre: payload.title,
@@ -119,6 +142,7 @@ export async function createEvent(payload) {
     lieu: payload.location,
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
+    coOrganizerClubIds: payload.coOrganizerClubIds || [],
   };
 
   try {
@@ -137,6 +161,7 @@ export async function updateEvent(id, payload) {
     lieu: payload.location,
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
+    coOrganizerClubIds: payload.coOrganizerClubIds || [],
   };
 
   try {

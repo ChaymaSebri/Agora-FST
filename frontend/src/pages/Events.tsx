@@ -312,7 +312,12 @@ const Events = () => {
           {filteredEvents.map((event) => {
             const isOwnerByClub = Boolean(event.clubId && currentClubId && String(event.clubId) === currentClubId);
             const isOwnerByOrganisateur = Boolean(event.organisateurId && currentUserId && String(event.organisateurId) === currentUserId);
-            const canManageEvent = isClubUser && (isOwnerByClub || isOwnerByOrganisateur);
+            const isCoOrganizerClub = Boolean(
+              currentClubId
+              && Array.isArray(event.coOrganizerClubIds)
+              && event.coOrganizerClubIds.some((clubId) => String(clubId) === currentClubId),
+            );
+            const canManageEvent = isClubUser && (isOwnerByClub || isOwnerByOrganisateur || isCoOrganizerClub);
 
             return (
             <EventCard
