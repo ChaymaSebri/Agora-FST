@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { fetchEventById, updateEvent } from "@/services/api";
+import { ApiError, fetchEventById, updateEvent } from "@/services/api";
 
 const eventSchema = z.object({
   title: z.string().min(3, "Le titre doit contenir au moins 3 caractères").max(100),
@@ -24,6 +24,8 @@ const eventSchema = z.object({
 const EditEvent = () => {
   const { id } = useParams<{ id: string }>();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingEvent, setIsLoadingEvent] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
@@ -44,6 +46,8 @@ const EditEvent = () => {
       }
 
       try {
+        setIsLoadingEvent(true);
+        setLoadError(null);
         const event = await fetchEventById(id);
         setTitle(event.title);
         setDescription(event.description);
@@ -53,8 +57,11 @@ const EditEvent = () => {
         setLocation(event.location);
         setMaxAttendees(String(event.maxAttendees || 0));
       } catch (error) {
-        toast({ title: "Erreur", description: "Événement introuvable.", variant: "destructive" });
-        navigate("/events");
+        const message = error instanceof ApiError ? error.message : "Événement introuvable.";
+        setLoadError(message);
+        toast({ title: "Erreur", description: message, variant: "destructive" });
+      } finally {
+        setIsLoadingEvent(false);
       }
     };
 
@@ -101,6 +108,19 @@ const EditEvent = () => {
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="container mx-auto px-4 max-w-3xl">
+        {isLoadingEvent ? (
+          <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-elegant">
+            <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin" />
+            Chargement de l'événement...
+          </div>
+        ) : null}
+
+        {loadError ? (
+          <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-destructive">
+            {loadError}
+          </div>
+        ) : null}
+
         <Button variant="ghost" onClick={() => navigate("/events")} className="mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Retour aux événements
@@ -116,7 +136,8 @@ const EditEvent = () => {
           </div>
         </div>
 
-        <Card className="border-border shadow-elegant">
+        {!isLoadingEvent && !loadError ? (
+          <Card className="border-border shadow-elegant">
           <CardHeader>
             <CardTitle className="text-foreground">Informations de l'événement</CardTitle>
             <CardDescription>Mettez à jour les détails de votre événement</CardDescription>
@@ -187,6 +208,7 @@ const EditEvent = () => {
             </form>
           </CardContent>
         </Card>
+        ) : null}
       </div>
     </div>
   );

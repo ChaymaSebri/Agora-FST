@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { createEvent } from "@/services/api";
+import { ApiError, createEvent } from "@/services/api";
 
 const eventSchema = z.object({
   title: z.string().min(3, "Le titre doit contenir au moins 3 caractères").max(100),
@@ -73,6 +73,12 @@ const CreateEvent = () => {
         toast({
           title: "Erreur de validation",
           description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else if (error instanceof ApiError) {
+        toast({
+          title: "Erreur",
+          description: error.message,
           variant: "destructive",
         });
       } else {

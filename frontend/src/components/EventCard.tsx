@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Users as UsersIcon, Pencil, Trash2 } from "lucide-react";
+import { Calendar, MapPin, Users as UsersIcon, Pencil, Trash2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
 
 export interface Event {
   id: string;
@@ -24,16 +23,20 @@ export interface Event {
   time: string;
   location: string;
   attendees: number;
+  participantsCount?: number;
   maxAttendees: number;
   type: "atelier" | "conference" | "hackathon" | "sortie" | "autre";
 }
 
 interface EventCardProps {
   event: Event;
-  onDelete?: (id: string) => void;
-  onRegister?: (id: string) => void;
-  onCancelRegistration?: (id: string) => void;
+  onDelete?: (id: string) => void | Promise<void>;
+  onRegister?: (id: string) => void | Promise<void>;
+  onCancelRegistration?: (id: string) => void | Promise<void>;
   isRegistered?: boolean;
+  isDeleting?: boolean;
+  isRegistering?: boolean;
+  isCancelling?: boolean;
 }
 
 const typeColors = {
@@ -58,19 +61,30 @@ export const EventCard = ({
   onRegister,
   onCancelRegistration,
   isRegistered = false,
+  isDeleting = false,
+  isRegistering = false,
+  isCancelling = false,
 }: EventCardProps) => {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const spotsLeft = event.maxAttendees - event.attendees;
+  const attendees = event.participantsCount ?? event.attendees;
+  const spotsLeft = event.maxAttendees - attendees;
+  const isBusy = isDeleting || isRegistering || isCancelling;
+  const actionLabel = isDeleting
+    ? "Suppression..."
+    : isRegistering
+      ? "Inscription..."
+      : isCancelling
+        ? "Annulation..."
+        : isRegistered
+          ? "Annuler inscription"
+          : spotsLeft === 0
+            ? "Complet"
+            : "S'inscrire";
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (onDelete) {
-      onDelete(event.id);
+      await onDelete(event.id);
     }
-    toast({
-      title: "Événement supprimé",
-      description: `"${event.title}" a été supprimé avec succès.`,
-    });
   };
 
   return (
@@ -80,6 +94,11 @@ export const EventCard = ({
           <Badge className={typeColors[event.type]}>
             {typeLabels[event.type]}
           </Badge>
+          {isRegistered && (
+            <Badge variant="outline" className="text-xs border-primary/40 text-primary">
+              Déjà inscrit
+            </Badge>
+          )}
           {spotsLeft <= 10 && spotsLeft > 0 && (
             <Badge variant="outline" className="text-xs text-accent">
               {spotsLeft} places restantes
@@ -105,7 +124,7 @@ export const EventCard = ({
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <UsersIcon className="w-4 h-4 text-primary" />
-            <span>{event.attendees}/{event.maxAttendees} participants</span>
+            <span>{attendees}/{event.maxAttendees} participants</span>
           </div>
         </div>
         
@@ -113,7 +132,7 @@ export const EventCard = ({
           <Button 
             variant={isRegistered ? "outline" : spotsLeft === 0 ? "outline" : "default"}
             className="flex-1"
-            disabled={spotsLeft === 0 && !isRegistered}
+            disabled={isBusy || (spotsLeft === 0 && !isRegistered)}
             onClick={() => {
               if (isRegistered) {
                 onCancelRegistration?.(event.id);
@@ -122,18 +141,26 @@ export const EventCard = ({
               onRegister?.(event.id);
             }}
           >
-            {isRegistered ? "Annuler inscription" : spotsLeft === 0 ? "Complet" : "S'inscrire"}
+            {isBusy ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {actionLabel}
+              </>
+            ) : (
+              actionLabel
+            )}
           </Button>
           <Button
             variant="outline"
             size="icon"
             onClick={() => navigate(`/events/${event.id}/edit`)}
+            disabled={isBusy}
           >
             <Pencil className="w-4 h-4" />
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive hover:text-destructive-foreground">
+              <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={isBusy}>
                 <Trash2 className="w-4 h-4" />
               </Button>
             </AlertDialogTrigger>
@@ -146,7 +173,7 @@ export const EventCard = ({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Annuler</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                <AlertDialogAction onClick={() => { void handleDelete(); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                   Supprimer
                 </AlertDialogAction>
               </AlertDialogFooter>

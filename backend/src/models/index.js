@@ -121,6 +121,7 @@ const evenementSchema = new Schema(
     date: { type: Date, required: true },
     lieu: { type: String },
     capacite: { type: Number, min: 1 },
+    participantsCount: { type: Number, min: 0, default: 0 },
     type: {
       type: String,
       enum: ['conference', 'atelier', 'hackathon', 'sortie', 'autre'],

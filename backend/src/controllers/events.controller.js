@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { Evenement, ParticipationEvenement, Utilisateur } = require('../models');
 
 const EVENT_TYPES = ['conference', 'atelier', 'hackathon', 'sortie', 'autre'];
+const ACTIVE_PARTICIPATION_STATUSES = ['inscrit', 'confirme', 'present'];
 const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   EVENT_NOT_FOUND: 'EVENT_NOT_FOUND',
@@ -50,6 +51,7 @@ function normalizeEvent(doc, participantsCount = 0) {
     lieu: source.lieu,
     capacite: source.capacite,
     attendees: participantsCount,
+    participantsCount,
     type: source.type,
     organisateurId: source.organisateurId,
     createdAt: source.createdAt,
@@ -70,6 +72,13 @@ function normalizeParticipation(doc) {
   };
 }
 
+async function countActiveParticipations(eventId) {
+  return ParticipationEvenement.countDocuments({
+    evenementId: eventId,
+    statut: { $in: ACTIVE_PARTICIPATION_STATUSES },
+  });
+}
+
 function parseDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -78,7 +87,7 @@ function parseDate(value) {
 function validateEventPayload(payload, { partial = false } = {}) {
   const errors = [];
 
-  const requiredFields = ['titre', 'date', 'organisateurId'];
+  const requiredFields = ['titre', 'date', 'type', 'capacite', 'lieu', 'organisateurId'];
   if (!partial) {
     requiredFields.forEach((field) => {
       if (payload[field] === undefined || payload[field] === null || payload[field] === '') {
@@ -97,8 +106,10 @@ function validateEventPayload(payload, { partial = false } = {}) {
     errors.push('description must be a string');
   }
 
-  if (payload.lieu !== undefined && payload.lieu !== null && typeof payload.lieu !== 'string') {
-    errors.push('lieu must be a string');
+  if (payload.lieu !== undefined) {
+    if (payload.lieu === null || typeof payload.lieu !== 'string' || !payload.lieu.trim()) {
+      errors.push('lieu must be a non-empty string');
+    }
   }
 
   if (payload.date !== undefined) {
@@ -154,11 +165,13 @@ async function listEvents(req, res, next) {
       filter.type = req.query.type;
     }
 
-    if (req.query.search) {
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+    if (search) {
       filter.$or = [
-        { titre: { $regex: req.query.search, $options: 'i' } },
-        { description: { $regex: req.query.search, $options: 'i' } },
-        { lieu: { $regex: req.query.search, $options: 'i' } },
+        { titre: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { lieu: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -181,7 +194,7 @@ async function listEvents(req, res, next) {
       {
         $match: {
           evenementId: { $in: eventIds },
-          statut: { $ne: 'annule' },
+          statut: { $in: ACTIVE_PARTICIPATION_STATUSES },
         },
       },
       {
@@ -230,10 +243,7 @@ async function getEventById(req, res, next) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
 
-    const attendees = await ParticipationEvenement.countDocuments({
-      evenementId: event._id,
-      statut: { $ne: 'annule' },
-    });
+    const attendees = await countActiveParticipations(event._id);
 
     return sendSuccess(res, 200, normalizeEvent(event, attendees));
   } catch (error) {
@@ -260,9 +270,10 @@ async function createEvent(req, res, next) {
       titre: payload.titre.trim(),
       description: payload.description,
       date: parseDate(payload.date),
-      lieu: payload.lieu,
-      capacite: payload.capacite,
-      type: payload.type || 'autre',
+      lieu: payload.lieu.trim(),
+      capacite: Number(payload.capacite),
+      participantsCount: 0,
+      type: payload.type,
       organisateurId: payload.organisateurId,
     });
 
@@ -305,8 +316,16 @@ async function updateEvent(req, res, next) {
       update.titre = update.titre.trim();
     }
 
+    if (update.lieu && typeof update.lieu === 'string') {
+      update.lieu = update.lieu.trim();
+    }
+
     if (update.date) {
       update.date = parseDate(update.date);
+    }
+
+    if (update.capacite !== undefined) {
+      update.capacite = Number(update.capacite);
     }
 
     if (Object.keys(update).length === 0) {
@@ -316,6 +335,18 @@ async function updateEvent(req, res, next) {
         ERROR_CODES.VALIDATION_ERROR,
         'No valid fields provided for update',
       );
+    }
+
+    if (update.capacite !== undefined) {
+      const currentActiveParticipants = await countActiveParticipations(id);
+      if (update.capacite < currentActiveParticipants) {
+        return sendError(
+          res,
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          'capacite cannot be lower than the current number of active participants',
+        );
+      }
     }
 
     const updated = await Evenement.findByIdAndUpdate(id, update, { new: true });
@@ -396,33 +427,62 @@ async function createParticipation(req, res, next) {
       return sendError(res, 404, ERROR_CODES.USER_NOT_FOUND, 'User not found');
     }
 
-    const existing = await ParticipationEvenement.findOne({ evenementId: id, utilisateurId });
-    if (existing) {
-      return sendError(
-        res,
-        409,
-        ERROR_CODES.ALREADY_REGISTERED,
-        'User is already registered for this event',
-      );
-    }
+    const session = await mongoose.startSession();
+    let created;
 
-    if (event.capacite) {
-      const registrationsCount = await ParticipationEvenement.countDocuments({
-        evenementId: id,
-        statut: { $ne: 'annule' },
+    try {
+      await session.withTransaction(async () => {
+        const lockedEvent = await Evenement.findOneAndUpdate(
+          {
+            _id: event._id,
+            $expr: { $lt: ['$participantsCount', '$capacite'] },
+          },
+          { $inc: { participantsCount: 1 } },
+          { new: true, session },
+        );
+
+        if (!lockedEvent) {
+          throw new Error('EVENT_FULL');
+        }
+
+        const existing = await ParticipationEvenement.findOne({
+          evenementId: id,
+          utilisateurId,
+        }).session(session);
+
+        if (existing) {
+          throw new Error('ALREADY_REGISTERED');
+        }
+
+        const [participation] = await ParticipationEvenement.create([
+          {
+            evenementId: id,
+            utilisateurId,
+            commentaire,
+            statut: 'inscrit',
+          },
+        ], { session });
+
+        created = participation;
       });
-
-      if (registrationsCount >= event.capacite) {
+    } catch (error) {
+      if (error.message === 'EVENT_FULL') {
         return sendError(res, 409, ERROR_CODES.EVENT_FULL, 'Event capacity reached');
       }
-    }
 
-    const created = await ParticipationEvenement.create({
-      evenementId: id,
-      utilisateurId,
-      commentaire,
-      statut: 'inscrit',
-    });
+      if (error.message === 'ALREADY_REGISTERED') {
+        return sendError(
+          res,
+          409,
+          ERROR_CODES.ALREADY_REGISTERED,
+          'User is already registered for this event',
+        );
+      }
+
+      throw error;
+    } finally {
+      session.endSession();
+    }
 
     return sendSuccess(res, 201, {
       id: created._id.toString(),
@@ -460,18 +520,39 @@ async function deleteParticipation(req, res, next) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
 
-    const deleted = await ParticipationEvenement.findOneAndDelete({
-      evenementId: id,
-      utilisateurId,
-    });
+    const session = await mongoose.startSession();
+    let deleted;
 
-    if (!deleted) {
-      return sendError(
-        res,
-        404,
-        ERROR_CODES.PARTICIPATION_NOT_FOUND,
-        'Participation not found',
-      );
+    try {
+      await session.withTransaction(async () => {
+        deleted = await ParticipationEvenement.findOneAndDelete({
+          evenementId: id,
+          utilisateurId,
+        }).session(session);
+
+        if (!deleted) {
+          throw new Error('PARTICIPATION_NOT_FOUND');
+        }
+
+        await Evenement.updateOne(
+          { _id: event._id, participantsCount: { $gt: 0 } },
+          { $inc: { participantsCount: -1 } },
+          { session },
+        );
+      });
+    } catch (error) {
+      if (error.message === 'PARTICIPATION_NOT_FOUND') {
+        return sendError(
+          res,
+          404,
+          ERROR_CODES.PARTICIPATION_NOT_FOUND,
+          'Participation not found',
+        );
+      }
+
+      throw error;
+    } finally {
+      session.endSession();
     }
 
     return sendSuccess(res, 200, {

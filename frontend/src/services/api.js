@@ -4,6 +4,16 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
+export class ApiError extends Error {
+  constructor(message, { status, code, data } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.data = data;
+  }
+}
+
 const UI_TO_API_TYPE = {
   conference: 'conference',
   atelier: 'atelier',
@@ -15,6 +25,7 @@ const UI_TO_API_TYPE = {
 function toUiEvent(item) {
   const rawDate = item?.date ? new Date(item.date) : null;
   const isValidDate = rawDate && !Number.isNaN(rawDate.getTime());
+  const participantsCount = Number(item?.participantsCount ?? item?.attendees ?? 0);
 
   return {
     id: item.id,
@@ -23,7 +34,8 @@ function toUiEvent(item) {
     date: isValidDate ? rawDate.toISOString().slice(0, 10) : '',
     time: isValidDate ? rawDate.toISOString().slice(11, 16) : '00:00',
     location: item.lieu || '',
-    attendees: Number(item.attendees || 0),
+    attendees: participantsCount,
+    participantsCount,
     maxAttendees: Number(item.capacite || 0),
     type: item.type || 'autre',
   };
@@ -40,19 +52,52 @@ function extractResponse(response) {
   throw new Error(response?.data?.error?.message || 'Unexpected API response');
 }
 
+function normalizeApiError(error) {
+  if (error instanceof ApiError) {
+    return error;
+  }
+
+  const response = error?.response;
+  const payload = response?.data;
+  if (payload?.success === false) {
+    return new ApiError(payload?.error?.message || 'Unexpected API error', {
+      status: response?.status,
+      code: payload?.error?.code,
+      data: payload?.error,
+    });
+  }
+
+  return new ApiError(error?.message || 'Network error', {
+    status: response?.status,
+    data: payload,
+  });
+}
+
+function rethrowApiError(error) {
+  throw normalizeApiError(error);
+}
+
 export async function fetchEvents(params = {}) {
-  const response = await api.get('/events', { params });
-  const data = extractResponse(response);
-  return {
-    items: (data.items || []).map(toUiEvent),
-    pagination: data.pagination,
-  };
+  try {
+    const response = await api.get('/events', { params });
+    const data = extractResponse(response);
+    return {
+      items: (data.items || []).map(toUiEvent),
+      pagination: data.pagination,
+    };
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function fetchEventById(id) {
-  const response = await api.get(`/events/${id}`);
-  const data = extractResponse(response);
-  return toUiEvent(data);
+  try {
+    const response = await api.get(`/events/${id}`);
+    const data = extractResponse(response);
+    return toUiEvent(data);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function createEvent(payload) {
@@ -66,8 +111,12 @@ export async function createEvent(payload) {
     organisateurId: payload.organisateurId,
   };
 
-  const response = await api.post('/events', body);
-  return extractResponse(response);
+  try {
+    const response = await api.post('/events', body);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function updateEvent(id, payload) {
@@ -81,31 +130,51 @@ export async function updateEvent(id, payload) {
     organisateurId: payload.organisateurId,
   };
 
-  const response = await api.patch(`/events/${id}`, body);
-  return extractResponse(response);
+  try {
+    const response = await api.patch(`/events/${id}`, body);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function deleteEvent(id) {
-  const response = await api.delete(`/events/${id}`);
-  return extractResponse(response);
+  try {
+    const response = await api.delete(`/events/${id}`);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function registerToEvent(eventId, payload) {
-  const response = await api.post(`/events/${eventId}/participations`, {
-    utilisateurId: payload.utilisateurId,
-    commentaire: payload.commentaire,
-  });
-  return extractResponse(response);
+  try {
+    const response = await api.post(`/events/${eventId}/participations`, {
+      utilisateurId: payload.utilisateurId,
+      commentaire: payload.commentaire,
+    });
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function listEventParticipations(eventId) {
-  const response = await api.get(`/events/${eventId}/participations`);
-  return extractResponse(response);
+  try {
+    const response = await api.get(`/events/${eventId}/participations`);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export async function cancelEventParticipation(eventId, utilisateurId) {
-  const response = await api.delete(`/events/${eventId}/participations/${utilisateurId}`);
-  return extractResponse(response);
+  try {
+    const response = await api.delete(`/events/${eventId}/participations/${utilisateurId}`);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
 }
 
 export default api;
