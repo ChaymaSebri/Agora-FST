@@ -10,6 +10,7 @@ const ERROR_CODES = {
   ALREADY_REGISTERED: 'ALREADY_REGISTERED',
   EVENT_FULL: 'EVENT_FULL',
   PARTICIPATION_NOT_FOUND: 'PARTICIPATION_NOT_FOUND',
+  FORBIDDEN: 'FORBIDDEN',
   INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
 };
 
@@ -82,6 +83,22 @@ async function countActiveParticipations(eventId) {
 function parseDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isRequesterClub(req) {
+  return req.user && req.user.role === 'club' && req.user.clubId;
+}
+
+function isEventOwnedByRequesterClub(event, req) {
+  if (!event || !req.user || !req.user.clubId) {
+    return false;
+  }
+
+  if (event.clubId) {
+    return String(event.clubId) === String(req.user.clubId);
+  }
+
+  return String(event.organisateurId) === String(req.user._id);
 }
 
 function isTransactionSupportError(error) {
@@ -187,7 +204,7 @@ async function deleteEventWithCascadeWithoutTransaction(eventId) {
 function validateEventPayload(payload, { partial = false } = {}) {
   const errors = [];
 
-  const requiredFields = ['titre', 'date', 'type', 'capacite', 'lieu', 'organisateurId'];
+  const requiredFields = ['titre', 'date', 'type', 'capacite', 'lieu'];
   if (!partial) {
     requiredFields.forEach((field) => {
       if (payload[field] === undefined || payload[field] === null || payload[field] === '') {
@@ -228,12 +245,6 @@ function validateEventPayload(payload, { partial = false } = {}) {
   if (payload.type !== undefined) {
     if (!EVENT_TYPES.includes(payload.type)) {
       errors.push(`type must be one of: ${EVENT_TYPES.join(', ')}`);
-    }
-  }
-
-  if (payload.organisateurId !== undefined) {
-    if (!mongoose.Types.ObjectId.isValid(payload.organisateurId)) {
-      errors.push('organisateurId must be a valid ObjectId');
     }
   }
 
@@ -359,6 +370,15 @@ async function getEventById(req, res, next) {
 
 async function createEvent(req, res, next) {
   try {
+    if (!isRequesterClub(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only club accounts can create events',
+      );
+    }
+
     const payload = req.body || {};
     const errors = validateEventPayload(payload, { partial: false });
 
@@ -374,7 +394,8 @@ async function createEvent(req, res, next) {
       capacite: Number(payload.capacite),
       participantsCount: 0,
       type: payload.type,
-      organisateurId: payload.organisateurId,
+      organisateurId: req.user._id,
+      clubId: req.user.clubId,
     });
 
     return sendSuccess(res, 201, {
@@ -393,9 +414,32 @@ async function createEvent(req, res, next) {
 
 async function updateEvent(req, res, next) {
   try {
+    if (!isRequesterClub(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only club accounts can update events',
+      );
+    }
+
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    const existingEvent = await Evenement.findById(id);
+    if (!existingEvent) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    if (!isEventOwnedByRequesterClub(existingEvent, req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'You can only update events created by your club',
+      );
     }
 
     const payload = req.body || {};
@@ -404,7 +448,7 @@ async function updateEvent(req, res, next) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
 
-    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'organisateurId'];
+    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type'];
     const update = {};
     updatableFields.forEach((field) => {
       if (payload[field] !== undefined) {
@@ -471,9 +515,32 @@ async function updateEvent(req, res, next) {
 
 async function deleteEvent(req, res, next) {
   try {
+    if (!isRequesterClub(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only club accounts can delete events',
+      );
+    }
+
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    const existingEvent = await Evenement.findById(id);
+    if (!existingEvent) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    if (!isEventOwnedByRequesterClub(existingEvent, req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'You can only delete events created by your club',
+      );
     }
 
     let deleted;

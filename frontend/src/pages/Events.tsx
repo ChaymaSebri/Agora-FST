@@ -20,10 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Events = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [page, setPage] = useState(1);
@@ -37,6 +39,9 @@ const Events = () => {
   const [busyAction, setBusyAction] = useState<{ id: string; type: "delete" | "register" | "cancel" } | null>(null);
   const fallbackUtilisateurId = import.meta.env.VITE_UTILISATEUR_ID || "000000000000000000000001";
   const pageSize = 12;
+  const currentUserId = String((user as { id?: string; _id?: string } | null)?.id || (user as { id?: string; _id?: string } | null)?._id || "");
+  const currentClubId = String((user as { clubId?: string } | null)?.clubId || "");
+  const isClubUser = user?.role === "club";
 
   useEffect(() => {
     setPage(1);
@@ -231,10 +236,12 @@ const Events = () => {
               Participez aux événements organisés par les clubs et projets
             </p>
           </div>
-          <Button variant="accent" size="lg" className="md:self-start" onClick={() => navigate("/events/new")}>
-            <Plus className="w-4 h-4 mr-2" />
-            Créer un événement
-          </Button>
+          {isClubUser ? (
+            <Button variant="accent" size="lg" className="md:self-start" onClick={() => navigate("/events/new")}>
+              <Plus className="w-4 h-4 mr-2" />
+              Créer un événement
+            </Button>
+          ) : null}
         </div>
 
         <div className="flex flex-col md:flex-row gap-4 mb-8">
@@ -302,7 +309,12 @@ const Events = () => {
         )}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredEvents.map((event) => (
+          {filteredEvents.map((event) => {
+            const isOwnerByClub = Boolean(event.clubId && currentClubId && String(event.clubId) === currentClubId);
+            const isOwnerByOrganisateur = Boolean(event.organisateurId && currentUserId && String(event.organisateurId) === currentUserId);
+            const canManageEvent = isClubUser && (isOwnerByClub || isOwnerByOrganisateur);
+
+            return (
             <EventCard
               key={event.id}
               event={event}
@@ -313,8 +325,10 @@ const Events = () => {
               isDeleting={busyAction?.id === event.id && busyAction.type === "delete"}
               isRegistering={busyAction?.id === event.id && busyAction.type === "register"}
               isCancelling={busyAction?.id === event.id && busyAction.type === "cancel"}
+              canManage={canManageEvent}
             />
-          ))}
+            );
+          })}
         </div>
 
         {isEmpty && (

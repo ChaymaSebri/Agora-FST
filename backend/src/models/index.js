@@ -144,9 +144,17 @@ const evenementSchema = new Schema(
       ref: 'Utilisateur',
       required: true,
     },
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
   },
   { timestamps: true }
 );
+
+evenementSchema.index({ clubId: 1, date: -1 });
+evenementSchema.index({ date: -1 });
 
 const participationEvenementSchema = new Schema(
   {

@@ -26,6 +26,8 @@ export interface Event {
   participantsCount?: number;
   maxAttendees: number;
   type: "atelier" | "conference" | "hackathon" | "sortie" | "autre";
+  organisateurId?: string;
+  clubId?: string;
 }
 
 interface EventCardProps {
@@ -37,6 +39,7 @@ interface EventCardProps {
   isDeleting?: boolean;
   isRegistering?: boolean;
   isCancelling?: boolean;
+  canManage?: boolean;
 }
 
 const typeColors = {
@@ -64,6 +67,7 @@ export const EventCard = ({
   isDeleting = false,
   isRegistering = false,
   isCancelling = false,
+  canManage = false,
 }: EventCardProps) => {
   const navigate = useNavigate();
   const attendees = event.participantsCount ?? event.attendees;
@@ -150,35 +154,39 @@ export const EventCard = ({
               actionLabel
             )}
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => navigate(`/events/${event.id}/edit`)}
-            disabled={isBusy}
-          >
-            <Pencil className="w-4 h-4" />
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={isBusy}>
-                <Trash2 className="w-4 h-4" />
+          {canManage ? (
+            <>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => navigate(`/events/${event.id}/edit`)}
+                disabled={isBusy}
+              >
+                <Pencil className="w-4 h-4" />
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Supprimer l'événement</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Êtes-vous sûr de vouloir supprimer "{event.title}" ? Cette action est irréversible.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Annuler</AlertDialogCancel>
-                <AlertDialogAction onClick={() => { void handleDelete(); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Supprimer
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={isBusy}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Supprimer l'événement</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Êtes-vous sûr de vouloir supprimer "{event.title}" ? Cette action est irréversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => { void handleDelete(); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Supprimer
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          ) : null}
         </div>
       </CardContent>
     </Card>

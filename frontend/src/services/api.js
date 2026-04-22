@@ -4,6 +4,15 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export class ApiError extends Error {
   constructor(message, { status, code, data } = {}) {
     super(message);
@@ -38,6 +47,8 @@ function toUiEvent(item) {
     participantsCount,
     maxAttendees: Number(item.capacite || 0),
     type: item.type || 'autre',
+    organisateurId: item.organisateurId,
+    clubId: item.clubId,
   };
 }
 
@@ -108,7 +119,6 @@ export async function createEvent(payload) {
     lieu: payload.location,
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
-    organisateurId: payload.organisateurId,
   };
 
   try {
@@ -127,7 +137,6 @@ export async function updateEvent(id, payload) {
     lieu: payload.location,
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
-    organisateurId: payload.organisateurId,
   };
 
   try {

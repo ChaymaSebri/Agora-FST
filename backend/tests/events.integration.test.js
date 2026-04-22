@@ -1,13 +1,30 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
+const jwt = require('jsonwebtoken');
 
 const app = require('../src/app');
-const { Evenement, ParticipationEvenement, Utilisateur } = require('../src/models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club } = require('../src/models');
 
 jest.setTimeout(120000);
 
 let replSet;
+
+function buildAuthHeader(user) {
+  const token = jwt.sign(
+    {
+      role: user.role,
+      email: user.email,
+    },
+    process.env.JWT_SECRET,
+    {
+      subject: String(user._id),
+      expiresIn: '1h',
+    },
+  );
+
+  return `Bearer ${token}`;
+}
 
 async function createUser(overrides = {}) {
   return Utilisateur.create({
@@ -22,7 +39,24 @@ async function createUser(overrides = {}) {
   });
 }
 
-async function createEvent({ organisateurId, overrides = {} }) {
+async function createClubUser(overrides = {}) {
+  const createdClub = await Club.create({
+    nom: `Club ${Date.now()} ${Math.random().toString(16).slice(2)}`,
+    description: 'Club test',
+  });
+
+  const user = await Utilisateur.create({
+    email: `club_${Date.now()}_${Math.random().toString(16).slice(2)}@test.com`,
+    motDePasse: 'password123',
+    role: 'club',
+    clubId: createdClub._id,
+    ...overrides,
+  });
+
+  return user;
+}
+
+async function createEvent({ organisateurId, clubId, overrides = {} }) {
   return Evenement.create({
     titre: 'Atelier IA',
     description: 'Initiation pratique',
@@ -32,11 +66,14 @@ async function createEvent({ organisateurId, overrides = {} }) {
     participantsCount: 0,
     type: 'atelier',
     organisateurId,
+    clubId,
     ...overrides,
   });
 }
 
 beforeAll(async () => {
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'events-test-secret';
+
   replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1 },
   });
@@ -59,16 +96,18 @@ beforeEach(async () => {
   await Promise.all([
     ParticipationEvenement.deleteMany({}),
     Evenement.deleteMany({}),
+    Club.deleteMany({}),
     Utilisateur.deleteMany({}),
   ]);
 });
 
 describe('Events API integration', () => {
   test('create event: POST /api/events returns 201 and id', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
 
     const response = await request(app)
       .post('/api/events')
+      .set('Authorization', buildAuthHeader(organisateur))
       .send({
         titre: 'Hackathon Web',
         description: '48h coding sprint',
@@ -76,7 +115,6 @@ describe('Events API integration', () => {
         lieu: 'Amphi B',
         capacite: 120,
         type: 'hackathon',
-        organisateurId: organisateur._id.toString(),
       });
 
     expect(response.status).toBe(201);
@@ -86,14 +124,20 @@ describe('Events API integration', () => {
     const created = await Evenement.findById(response.body.data.id);
     expect(created).toBeTruthy();
     expect(created.titre).toBe('Hackathon Web');
+    expect(created.organisateurId.toString()).toBe(organisateur._id.toString());
+    expect(created.clubId.toString()).toBe(organisateur.clubId.toString());
   });
 
   test('update event: PATCH /api/events/:id updates fields', async () => {
-    const organisateur = await createUser();
-    const event = await createEvent({ organisateurId: organisateur._id });
+    const organisateur = await createClubUser();
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
+    });
 
     const response = await request(app)
       .patch(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(organisateur))
       .send({
         titre: 'Atelier IA Avance',
         capacite: 75,
@@ -108,10 +152,15 @@ describe('Events API integration', () => {
   });
 
   test('delete event: DELETE /api/events/:id removes event', async () => {
-    const organisateur = await createUser();
-    const event = await createEvent({ organisateurId: organisateur._id });
+    const organisateur = await createClubUser();
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
+    });
 
-    const response = await request(app).delete(`/api/events/${event._id}`);
+    const response = await request(app)
+      .delete(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(organisateur));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -122,12 +171,13 @@ describe('Events API integration', () => {
   });
 
   test('delete event cascade: DELETE /api/events/:id removes related participations', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `cascade_${Date.now()}@test.com`,
     });
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 3, participantsCount: 1 },
     });
 
@@ -137,7 +187,9 @@ describe('Events API integration', () => {
       statut: 'inscrit',
     });
 
-    const response = await request(app).delete(`/api/events/${event._id}`);
+    const response = await request(app)
+      .delete(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(organisateur));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -150,9 +202,10 @@ describe('Events API integration', () => {
   });
 
   test('list events: GET /api/events returns items, pagination and participant counts', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const event1 = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: {
         titre: 'Conference JS',
         type: 'conference',
@@ -161,6 +214,7 @@ describe('Events API integration', () => {
     });
     const event2 = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: {
         titre: 'Atelier React',
         type: 'atelier',
@@ -204,8 +258,11 @@ describe('Events API integration', () => {
   });
 
   test('get event detail: GET /api/events/:id returns participant count', async () => {
-    const organisateur = await createUser();
-    const event = await createEvent({ organisateurId: organisateur._id });
+    const organisateur = await createClubUser();
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
+    });
     const participant = await createUser({
       email: `detail_${Date.now()}@test.com`,
     });
@@ -226,12 +283,13 @@ describe('Events API integration', () => {
   });
 
   test('register user: POST /api/events/:id/participations creates participation', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `register_${Date.now()}@test.com`,
     });
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 2 },
     });
 
@@ -254,12 +312,13 @@ describe('Events API integration', () => {
   });
 
   test('unregister user: DELETE /api/events/:id/participations/:utilisateurId removes participation', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `unregister_${Date.now()}@test.com`,
     });
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 2 },
     });
 
@@ -286,7 +345,7 @@ describe('Events API integration', () => {
   });
 
   test('full event: second registration returns 409 EVENT_FULL', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant1 = await createUser({
       email: `full1_${Date.now()}@test.com`,
     });
@@ -296,6 +355,7 @@ describe('Events API integration', () => {
 
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 1 },
     });
 
@@ -315,13 +375,14 @@ describe('Events API integration', () => {
   });
 
   test('duplicate registration: same user second registration returns 409 ALREADY_REGISTERED', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `dup_${Date.now()}@test.com`,
     });
 
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 3 },
     });
 
@@ -345,12 +406,13 @@ describe('Events API integration', () => {
       throw new Error('Transaction numbers are only allowed on a replica set member or mongos');
     });
 
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `fallback_register_${Date.now()}@test.com`,
     });
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 2 },
     });
 
@@ -368,12 +430,13 @@ describe('Events API integration', () => {
   });
 
   test('unregister fallback: succeeds when transactions are not supported', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `fallback_unregister_${Date.now()}@test.com`,
     });
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 2 },
     });
 
@@ -405,12 +468,13 @@ describe('Events API integration', () => {
   });
 
   test('delete event fallback cascade: removes participations when transactions are not supported', async () => {
-    const organisateur = await createUser();
+    const organisateur = await createClubUser();
     const participant = await createUser({
       email: `cascade_fallback_${Date.now()}@test.com`,
     });
     const event = await createEvent({
       organisateurId: organisateur._id,
+      clubId: organisateur.clubId,
       overrides: { capacite: 3, participantsCount: 1 },
     });
 
@@ -424,7 +488,9 @@ describe('Events API integration', () => {
       throw new Error('Transaction numbers are only allowed on a replica set member or mongos');
     });
 
-    const response = await request(app).delete(`/api/events/${event._id}`);
+    const response = await request(app)
+      .delete(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(organisateur));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -436,5 +502,44 @@ describe('Events API integration', () => {
     expect(orphanParticipation).toBeNull();
 
     startSessionSpy.mockRestore();
+  });
+
+  test('non club user cannot create event: POST /api/events returns 403', async () => {
+    const etudiant = await createUser();
+
+    const response = await request(app)
+      .post('/api/events')
+      .set('Authorization', buildAuthHeader(etudiant))
+      .send({
+        titre: 'Event refuse',
+        description: 'Should not be created',
+        date: '2026-08-15T10:00:00.000Z',
+        lieu: 'Salle C',
+        capacite: 40,
+        type: 'atelier',
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  test('club cannot update event of another club: PATCH /api/events/:id returns 403', async () => {
+    const ownerClub = await createClubUser();
+    const otherClub = await createClubUser();
+
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+    });
+
+    const response = await request(app)
+      .patch(`/api/events/${event._id}`)
+      .set('Authorization', buildAuthHeader(otherClub))
+      .send({ titre: 'Tentative interdite' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('FORBIDDEN');
   });
 });
