@@ -1,11 +1,12 @@
 const router = require('express').Router();
+const authController = require('../controllers/auth.controller');
+const {
+  authenticate,
+} = require('../middlewares/auth.middleware');
 
-router.post('/login', (req, res) => {
-  res.json({ message: 'Auth login placeholder' });
-});
-
-router.post('/register', (req, res) => {
-  res.json({ message: 'Auth register placeholder' });
-});
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/logout', authenticate, authController.logout);
+router.get('/me', authenticate, authController.me);
 
 module.exports = router;

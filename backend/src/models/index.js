@@ -10,13 +10,25 @@ const competenceSchema = new Schema(
 
 const utilisateurSchema = new Schema(
   {
-    nom: { type: String, required: true, trim: true },
-    prenom: { type: String, required: true, trim: true },
+    nom: {
+      type: String,
+      trim: true,
+      required() {
+        return this.role !== 'club';
+      },
+    },
+    prenom: {
+      type: String,
+      trim: true,
+      required() {
+        return this.role !== 'club';
+      },
+    },
     email: { type: String, required: true, unique: true, lowercase: true },
     motDePasse: { type: String, required: true },
     role: {
       type: String,
-      enum: ['etudiant', 'enseignant', 'bureau_executif'],
+      enum: ['etudiant', 'enseignant', 'club', 'admin'],
       required: true,
     },
     niveau: {
@@ -42,7 +54,7 @@ const utilisateurSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'Club',
       required() {
-        return this.role === 'bureau_executif';
+        return this.role === 'club';
       },
     },
     competenceIds: [{ type: Schema.Types.ObjectId, ref: 'Competence' }],
