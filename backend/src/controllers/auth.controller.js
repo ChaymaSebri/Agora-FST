@@ -1,9 +1,38 @@
-function login(req, res) {
-  res.json({ message: 'Auth login controller placeholder' });
+const authService = require('../services/auth.service');
+
+async function register(req, res, next) {
+  try {
+    const result = await authService.register(req.body);
+    return res.status(201).json(result);
+  } catch (error) {
+    return next(error);
+  }
 }
 
-function register(req, res) {
-  res.json({ message: 'Auth register controller placeholder' });
+async function login(req, res, next) {
+  try {
+    const result = await authService.login(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
+  }
 }
 
-module.exports = { login, register };
+async function logout(req, res) {
+  return res.status(200).json({
+    message: 'Deconnexion reussie',
+  });
+}
+
+async function me(req, res) {
+  return res.status(200).json({
+    user: req.user,
+  });
+}
+
+module.exports = {
+  register,
+  login,
+  logout,
+  me,
+};

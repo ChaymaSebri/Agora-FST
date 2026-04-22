@@ -28,6 +28,20 @@ export const Navbar = () => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const { user, isAdmin, signOut } = useAuth();
+  const roleLabel = (() => {
+    switch (user?.role) {
+      case "admin":
+        return "Administrateur";
+      case "club":
+        return "Club";
+      case "enseignant":
+        return "Enseignant";
+      case "etudiant":
+        return "Étudiant";
+      default:
+        return "Membre";
+    }
+  })();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
@@ -37,7 +51,7 @@ export const Navbar = () => {
             <div className="p-2 bg-gradient-primary rounded-lg transition-transform group-hover:scale-110">
               <Rocket className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-bold text-xl text-foreground">ClubHub</span>
+            <span className="font-bold text-xl text-foreground">Agora FST</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -71,7 +85,7 @@ export const Navbar = () => {
                   <div className="px-2 py-1.5 text-sm">
                     <div className="font-medium">{user.email}</div>
                     <div className="text-xs text-muted-foreground">
-                      {isAdmin ? "Administrateur" : "Membre"}
+                      {roleLabel}
                     </div>
                   </div>
                   <DropdownMenuSeparator />

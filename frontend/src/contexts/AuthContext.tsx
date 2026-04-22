@@ -1,12 +1,22 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import axios from "axios";
+import api from "@/services/api";
 
 type AuthUser = {
   email?: string | null;
   fullName?: string | null;
+  nom?: string | null;
+  prenom?: string | null;
+  role?: string | null;
 };
 
 type AuthResult = {
   error: { message: string } | null;
+};
+
+type BackendAuthResponse = {
+  token: string;
+  user: AuthUser;
 };
 
 type AuthContextValue = {
@@ -14,52 +24,123 @@ type AuthContextValue = {
   loading: boolean;
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
-  signUp: (email: string, password: string, fullName: string) => Promise<AuthResult>;
-  signOut: () => void;
+  signUp: (payload: {
+    email: string;
+    password: string;
+    fullName?: string;
+    role: string;
+    niveau?: string;
+    filiere?: string;
+    grade?: string;
+    clubName?: string;
+    clubDescription?: string;
+  }) => Promise<AuthResult>;
+  signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const bootstrapAuth = async () => {
+      const token = localStorage.getItem("authToken");
+
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data } = await api.get("/auth/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        setUser(data.user);
+      } catch {
+        localStorage.removeItem("authToken");
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    bootstrapAuth();
+  }, []);
+
+  const isAdmin = user?.role === "admin";
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      loading: false,
+      loading,
       isAdmin,
-      signIn: async (email) => {
-        const existingUser = registeredUsers.find((entry) => entry.email === email);
+      signIn: async (email, password) => {
+        try {
+          const { data } = await api.post<BackendAuthResponse>("/auth/login", {
+            email,
+            password,
+          });
 
-        if (!existingUser) {
-          return { error: { message: "Invalid login credentials" } };
+          localStorage.setItem("authToken", data.token);
+          setUser(data.user);
+
+          return { error: null };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Email ou mot de passe incorrect")
+            : error instanceof Error
+              ? error.message
+              : "Email ou mot de passe incorrect";
+
+          return { error: { message } };
+        }
+      },
+      signUp: async (payload) => {
+        try {
+          const { data } = await api.post<BackendAuthResponse>("/auth/register", payload);
+
+          localStorage.setItem("authToken", data.token);
+          setUser(data.user);
+
+          return { error: null };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de l inscription")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de l inscription";
+
+          return { error: { message } };
+        }
+      },
+      signOut: async () => {
+        const token = localStorage.getItem("authToken");
+        if (token) {
+          try {
+            await api.post(
+              "/auth/logout",
+              {},
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              },
+            );
+          } catch {
+            // Logout is stateless; clear local session even if the request fails.
+          }
         }
 
-        setUser(existingUser);
-        setIsAdmin(false);
-        return { error: null };
-      },
-      signUp: async (email, _password, fullName) => {
-        const alreadyRegistered = registeredUsers.some((entry) => entry.email === email);
-
-        if (alreadyRegistered) {
-          return { error: { message: "already registered" } };
-        }
-
-        const nextUser = { email, fullName };
-        setRegisteredUsers((current) => [...current, nextUser]);
-        setUser(nextUser);
-        setIsAdmin(false);
-        return { error: null };
-      },
-      signOut: () => {
+        localStorage.removeItem("authToken");
         setUser(null);
-        setIsAdmin(false);
       },
     }),
-    [user, isAdmin, registeredUsers],
+    [user, loading, isAdmin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -71,11 +152,11 @@ export function useAuth() {
   if (!context) {
     return {
       user: null,
-      loading: false,
+      loading: true,
       isAdmin: false,
       signIn: async () => ({ error: null }),
       signUp: async () => ({ error: null }),
-      signOut: () => undefined,
+      signOut: async () => undefined,
     };
   }
 
