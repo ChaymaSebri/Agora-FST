@@ -174,6 +174,16 @@ async function deleteParticipationWithoutTransaction({ eventId, utilisateurId })
   return deleted;
 }
 
+async function deleteEventWithCascadeWithoutTransaction(eventId) {
+  const deleted = await Evenement.findByIdAndDelete(eventId);
+  if (!deleted) {
+    throw new Error('EVENT_NOT_FOUND');
+  }
+
+  await ParticipationEvenement.deleteMany({ evenementId: eventId });
+  return deleted;
+}
+
 function validateEventPayload(payload, { partial = false } = {}) {
   const errors = [];
 
@@ -466,9 +476,28 @@ async function deleteEvent(req, res, next) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
 
-    const deleted = await Evenement.findByIdAndDelete(id);
-    if (!deleted) {
-      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    let deleted;
+
+    try {
+      await runWithOptionalTransaction(
+        async (session) => {
+          await ParticipationEvenement.deleteMany({ evenementId: id }).session(session);
+          deleted = await Evenement.findByIdAndDelete(id).session(session);
+
+          if (!deleted) {
+            throw new Error('EVENT_NOT_FOUND');
+          }
+        },
+        async () => {
+          deleted = await deleteEventWithCascadeWithoutTransaction(id);
+        },
+      );
+    } catch (error) {
+      if (error.message === 'EVENT_NOT_FOUND') {
+        return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+      }
+
+      throw error;
     }
 
     return sendSuccess(res, 200, {

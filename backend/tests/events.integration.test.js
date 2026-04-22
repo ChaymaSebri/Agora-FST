@@ -121,6 +121,34 @@ describe('Events API integration', () => {
     expect(deleted).toBeNull();
   });
 
+  test('delete event cascade: DELETE /api/events/:id removes related participations', async () => {
+    const organisateur = await createUser();
+    const participant = await createUser({
+      email: `cascade_${Date.now()}@test.com`,
+    });
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      overrides: { capacite: 3, participantsCount: 1 },
+    });
+
+    await ParticipationEvenement.create({
+      evenementId: event._id,
+      utilisateurId: participant._id,
+      statut: 'inscrit',
+    });
+
+    const response = await request(app).delete(`/api/events/${event._id}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+
+    const deletedEvent = await Evenement.findById(event._id);
+    expect(deletedEvent).toBeNull();
+
+    const orphanParticipation = await ParticipationEvenement.findOne({ evenementId: event._id });
+    expect(orphanParticipation).toBeNull();
+  });
+
   test('list events: GET /api/events returns items, pagination and participant counts', async () => {
     const organisateur = await createUser();
     const event1 = await createEvent({
@@ -372,6 +400,40 @@ describe('Events API integration', () => {
 
     const refreshedEvent = await Evenement.findById(event._id);
     expect(refreshedEvent.participantsCount).toBe(0);
+
+    startSessionSpy.mockRestore();
+  });
+
+  test('delete event fallback cascade: removes participations when transactions are not supported', async () => {
+    const organisateur = await createUser();
+    const participant = await createUser({
+      email: `cascade_fallback_${Date.now()}@test.com`,
+    });
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      overrides: { capacite: 3, participantsCount: 1 },
+    });
+
+    await ParticipationEvenement.create({
+      evenementId: event._id,
+      utilisateurId: participant._id,
+      statut: 'inscrit',
+    });
+
+    const startSessionSpy = jest.spyOn(mongoose, 'startSession').mockImplementationOnce(async () => {
+      throw new Error('Transaction numbers are only allowed on a replica set member or mongos');
+    });
+
+    const response = await request(app).delete(`/api/events/${event._id}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+
+    const deletedEvent = await Evenement.findById(event._id);
+    expect(deletedEvent).toBeNull();
+
+    const orphanParticipation = await ParticipationEvenement.findOne({ evenementId: event._id });
+    expect(orphanParticipation).toBeNull();
 
     startSessionSpy.mockRestore();
   });

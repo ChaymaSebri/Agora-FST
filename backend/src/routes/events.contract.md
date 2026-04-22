@@ -57,6 +57,8 @@ List events with optional filters.
         "date": "2026-05-12T09:00:00.000Z",
         "lieu": "Salle A302",
         "capacite": 50,
+        "attendees": 12,
+        "participantsCount": 12,
         "type": "atelier",
         "organisateurId": "userId",
         "createdAt": "2026-04-20T10:00:00.000Z",
@@ -91,6 +93,8 @@ Get one event by id.
     "date": "2026-05-12T09:00:00.000Z",
     "lieu": "Salle A302",
     "capacite": 50,
+    "attendees": 12,
+    "participantsCount": 12,
     "type": "atelier",
     "organisateurId": "userId",
     "createdAt": "2026-04-20T10:00:00.000Z",
@@ -98,6 +102,8 @@ Get one event by id.
   }
 }
 ```
+
+`attendees` and `participantsCount` represent the same active participation count and are both returned for compatibility.
 
 ### 404
 
