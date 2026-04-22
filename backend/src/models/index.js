@@ -49,6 +49,7 @@ const utilisateurSchema = new Schema(
         return this.role === 'enseignant';
       },
     },
+    avatarUrl: { type: String, trim: true },
     specialite: { type: String },
     clubId: {
       type: Schema.Types.ObjectId,

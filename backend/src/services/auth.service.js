@@ -58,9 +58,11 @@ function normalizeRegistrationPayload(payload) {
   normalized.filiere = payload.filiere;
   normalized.grade = payload.grade;
   normalized.specialite = payload.specialite;
+  normalized.avatarUrl = String(payload.avatarUrl || payload.avatar_url || '').trim();
   normalized.clubId = payload.clubId;
   normalized.clubName = String(payload.clubName || '').trim();
   normalized.clubDescription = String(payload.clubDescription || '').trim();
+  normalized.clubSpecialite = String(payload.clubSpecialite || '').trim();
   normalized.competenceIds = Array.isArray(payload.competenceIds)
     ? payload.competenceIds
     : [];
@@ -107,6 +109,7 @@ function sanitizeUser(userDocument) {
     filiere: userDocument.filiere,
     grade: userDocument.grade,
     specialite: userDocument.specialite,
+    avatar_url: userDocument.avatarUrl || '',
     clubId: userDocument.clubId,
     competenceIds: userDocument.competenceIds,
     createdAt: userDocument.createdAt,
@@ -169,6 +172,7 @@ async function register(payload) {
     createdClub = await Club.create({
       nom: userInput.clubName,
       description: userInput.clubDescription || undefined,
+      specialite: userInput.clubSpecialite || undefined,
     });
     userInput.clubId = createdClub._id;
   }
@@ -186,6 +190,7 @@ async function register(payload) {
       filiere: userInput.filiere,
       grade: userInput.grade,
       specialite: userInput.specialite,
+      avatarUrl: userInput.avatarUrl || undefined,
       clubId: userInput.clubId,
       competenceIds: userInput.competenceIds,
     });

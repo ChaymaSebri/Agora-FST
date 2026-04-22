@@ -8,6 +8,8 @@ type AuthUser = {
   nom?: string | null;
   prenom?: string | null;
   role?: string | null;
+  avatar_url?: string | null;
+  avatarUrl?: string | null;
 };
 
 type AuthResult = {
@@ -32,10 +34,14 @@ type AuthContextValue = {
     niveau?: string;
     filiere?: string;
     grade?: string;
+    specialite?: string;
     clubName?: string;
     clubDescription?: string;
+    clubSpecialite?: string;
+    avatarUrl?: string;
   }) => Promise<AuthResult>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -73,6 +79,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const isAdmin = user?.role === "admin";
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      setUser(null);
+      return;
+    }
+
+    try {
+      const { data } = await api.get("/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      setUser(data.user);
+    } catch {
+      localStorage.removeItem("authToken");
+      setUser(null);
+    }
+  };
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -139,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("authToken");
         setUser(null);
       },
+      refreshUser,
     }),
     [user, loading, isAdmin],
   );
@@ -157,6 +185,7 @@ export function useAuth() {
       signIn: async () => ({ error: null }),
       signUp: async () => ({ error: null }),
       signOut: async () => undefined,
+      refreshUser: async () => undefined,
     };
   }
 

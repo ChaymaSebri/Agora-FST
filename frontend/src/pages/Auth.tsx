@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Loader2, Eye, EyeOff } from "lucide-react";
+import { uploadImageToCloudinary } from "@/lib/cloudinary";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -25,8 +26,10 @@ const signupSchema = loginSchema.extend({
   niveau: z.string().optional(),
   filiere: z.string().optional(),
   grade: z.string().optional(),
+  specialite: z.string().optional(),
   clubName: z.string().optional(),
   clubDescription: z.string().optional(),
+  clubSpecialite: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
   path: ["confirmPassword"],
@@ -47,12 +50,20 @@ const Auth = () => {
   const [signupNiveau, setSignupNiveau] = useState("");
   const [signupFiliere, setSignupFiliere] = useState("");
   const [signupGrade, setSignupGrade] = useState("");
+  const [signupSpecialite, setSignupSpecialite] = useState("");
   const [signupClubName, setSignupClubName] = useState("");
   const [signupClubDescription, setSignupClubDescription] = useState("");
+  const [signupClubSpecialite, setSignupClubSpecialite] = useState("");
+  const [signupPhotoFile, setSignupPhotoFile] = useState<File | null>(null);
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleSignupPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] || null;
+    setSignupPhotoFile(nextFile);
+  };
 
   useEffect(() => {
     if (user) {
@@ -116,8 +127,10 @@ const Auth = () => {
         niveau: signupNiveau,
         filiere: signupFiliere,
         grade: signupGrade,
+        specialite: signupSpecialite,
         clubName: signupClubName,
         clubDescription: signupClubDescription,
+        clubSpecialite: signupClubSpecialite,
       });
 
       if (signupRole !== "club" && signupFullName.trim().length < 2) {
@@ -141,6 +154,12 @@ const Auth = () => {
       }
       
       setIsLoading(true);
+
+      let uploadedAvatarUrl: string | undefined;
+      if (signupPhotoFile) {
+        uploadedAvatarUrl = await uploadImageToCloudinary(signupPhotoFile);
+      }
+
       const { error } = await signUp({
         email: signupEmail,
         password: signupPassword,
@@ -149,8 +168,14 @@ const Auth = () => {
         niveau: signupRole === "etudiant" ? signupNiveau : undefined,
         filiere: signupRole === "etudiant" ? signupFiliere : undefined,
         grade: signupRole === "enseignant" ? signupGrade : undefined,
+        specialite:
+          signupRole === "etudiant" || signupRole === "enseignant"
+            ? signupSpecialite
+            : undefined,
         clubName: signupRole === "club" ? signupClubName : undefined,
         clubDescription: signupRole === "club" ? signupClubDescription : undefined,
+        clubSpecialite: signupRole === "club" ? signupClubSpecialite : undefined,
+        avatarUrl: uploadedAvatarUrl,
       });
       
       if (error) {
@@ -316,20 +341,42 @@ const Auth = () => {
                           required
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-specialite-etudiant">Spécialité (optionnel)</Label>
+                        <Input
+                          id="signup-specialite-etudiant"
+                          type="text"
+                          placeholder="IA, Web, Cybersécurité..."
+                          value={signupSpecialite}
+                          onChange={(e) => setSignupSpecialite(e.target.value)}
+                        />
+                      </div>
                     </>
                   )}
                   {signupRole === "enseignant" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-grade">Grade</Label>
-                      <Input
-                        id="signup-grade"
-                        type="text"
-                        placeholder="Maître de conférences"
-                        value={signupGrade}
-                        onChange={(e) => setSignupGrade(e.target.value)}
-                        required
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-grade">Grade</Label>
+                        <Input
+                          id="signup-grade"
+                          type="text"
+                          placeholder="Maître de conférences"
+                          value={signupGrade}
+                          onChange={(e) => setSignupGrade(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-specialite-enseignant">Spécialité (optionnel)</Label>
+                        <Input
+                          id="signup-specialite-enseignant"
+                          type="text"
+                          placeholder="Génie logiciel, Data..."
+                          value={signupSpecialite}
+                          onChange={(e) => setSignupSpecialite(e.target.value)}
+                        />
+                      </div>
+                    </>
                   )}
                   {signupRole === "club" && (
                     <>
@@ -354,8 +401,30 @@ const Auth = () => {
                           onChange={(e) => setSignupClubDescription(e.target.value)}
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-club-specialite">Spécialité du club (optionnel)</Label>
+                        <Input
+                          id="signup-club-specialite"
+                          type="text"
+                          placeholder="Robotique, Entrepreneuriat..."
+                          value={signupClubSpecialite}
+                          onChange={(e) => setSignupClubSpecialite(e.target.value)}
+                        />
+                      </div>
                     </>
                   )}
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-photo">Photo (optionnel)</Label>
+                    <Input
+                      id="signup-photo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSignupPhotoChange}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Sélectionnez une image depuis votre galerie. Elle sera stockée sur Cloudinary.
+                    </p>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
                     <Input

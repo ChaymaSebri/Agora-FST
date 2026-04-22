@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Rocket, Menu, Shield, LogOut } from "lucide-react";
+import { Rocket, Menu, Shield, LogOut, User } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const navItems = [
   { name: "Accueil", path: "/" },
@@ -28,6 +28,8 @@ export const Navbar = () => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const { user, isAdmin, signOut } = useAuth();
+  const avatarSrc = user?.avatar_url || user?.avatarUrl || undefined;
+  const avatarInitial = user?.email?.charAt(0).toUpperCase() || "U";
   const roleLabel = (() => {
     switch (user?.role) {
       case "admin":
@@ -51,7 +53,7 @@ export const Navbar = () => {
             <div className="p-2 bg-gradient-primary rounded-lg transition-transform group-hover:scale-110">
               <Rocket className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-bold text-xl text-foreground">ClubHub</span>
+            <span className="font-bold text-xl text-foreground">Agora FST</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -75,8 +77,9 @@ export const Navbar = () => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2">
                     <Avatar className="w-7 h-7">
+                      <AvatarImage src={avatarSrc} alt={user.email || "Avatar"} />
                       <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                        {user.email?.charAt(0).toUpperCase()}
+                        {avatarInitial}
                       </AvatarFallback>
                     </Avatar>
                   </Button>
@@ -88,6 +91,13 @@ export const Navbar = () => {
                       {roleLabel}
                     </div>
                   </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/profile" className="cursor-pointer">
+                      <User className="w-4 h-4 mr-2" />
+                      Mon profil
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {isAdmin && (
                     <>
@@ -139,6 +149,14 @@ export const Navbar = () => {
                 
                 {user ? (
                   <>
+                    <Link
+                      to="/profile"
+                      onClick={() => setOpen(false)}
+                      className="text-lg font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+                    >
+                      <User className="w-5 h-5" />
+                      Mon profil
+                    </Link>
                     {isAdmin && (
                       <Link
                         to="/admin"
