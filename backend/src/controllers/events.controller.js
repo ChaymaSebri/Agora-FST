@@ -84,6 +84,96 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function isTransactionSupportError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    message.includes('transaction numbers are only allowed on a replica set member or mongos')
+    || message.includes('replica set')
+    || message.includes('mongos')
+    || message.includes('transaction not supported')
+  );
+}
+
+async function runWithOptionalTransaction(transactionWork, fallbackWork) {
+  let session;
+
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      await transactionWork(session);
+    });
+    return;
+  } catch (error) {
+    if (isTransactionSupportError(error)) {
+      await fallbackWork();
+      return;
+    }
+    throw error;
+  } finally {
+    if (session) {
+      session.endSession();
+    }
+  }
+}
+
+async function createParticipationWithoutTransaction({ eventId, utilisateurId, commentaire }) {
+  const existing = await ParticipationEvenement.findOne({ evenementId: eventId, utilisateurId });
+  if (existing) {
+    throw new Error('ALREADY_REGISTERED');
+  }
+
+  const lockedEvent = await Evenement.findOneAndUpdate(
+    {
+      _id: eventId,
+      $expr: { $lt: ['$participantsCount', '$capacite'] },
+    },
+    { $inc: { participantsCount: 1 } },
+    { new: true },
+  );
+
+  if (!lockedEvent) {
+    throw new Error('EVENT_FULL');
+  }
+
+  try {
+    return await ParticipationEvenement.create({
+      evenementId: eventId,
+      utilisateurId,
+      commentaire,
+      statut: 'inscrit',
+    });
+  } catch (error) {
+    await Evenement.updateOne(
+      { _id: eventId, participantsCount: { $gt: 0 } },
+      { $inc: { participantsCount: -1 } },
+    );
+
+    if (error?.code === 11000) {
+      throw new Error('ALREADY_REGISTERED');
+    }
+
+    throw error;
+  }
+}
+
+async function deleteParticipationWithoutTransaction({ eventId, utilisateurId }) {
+  const deleted = await ParticipationEvenement.findOneAndDelete({
+    evenementId: eventId,
+    utilisateurId,
+  });
+
+  if (!deleted) {
+    throw new Error('PARTICIPATION_NOT_FOUND');
+  }
+
+  await Evenement.updateOne(
+    { _id: eventId, participantsCount: { $gt: 0 } },
+    { $inc: { participantsCount: -1 } },
+  );
+
+  return deleted;
+}
+
 function validateEventPayload(payload, { partial = false } = {}) {
   const errors = [];
 
@@ -427,44 +517,52 @@ async function createParticipation(req, res, next) {
       return sendError(res, 404, ERROR_CODES.USER_NOT_FOUND, 'User not found');
     }
 
-    const session = await mongoose.startSession();
     let created;
 
     try {
-      await session.withTransaction(async () => {
-        const lockedEvent = await Evenement.findOneAndUpdate(
-          {
-            _id: event._id,
-            $expr: { $lt: ['$participantsCount', '$capacite'] },
-          },
-          { $inc: { participantsCount: 1 } },
-          { new: true, session },
-        );
+      await runWithOptionalTransaction(
+        async (session) => {
+          const lockedEvent = await Evenement.findOneAndUpdate(
+            {
+              _id: event._id,
+              $expr: { $lt: ['$participantsCount', '$capacite'] },
+            },
+            { $inc: { participantsCount: 1 } },
+            { new: true, session },
+          );
 
-        if (!lockedEvent) {
-          throw new Error('EVENT_FULL');
-        }
+          if (!lockedEvent) {
+            throw new Error('EVENT_FULL');
+          }
 
-        const existing = await ParticipationEvenement.findOne({
-          evenementId: id,
-          utilisateurId,
-        }).session(session);
-
-        if (existing) {
-          throw new Error('ALREADY_REGISTERED');
-        }
-
-        const [participation] = await ParticipationEvenement.create([
-          {
+          const existing = await ParticipationEvenement.findOne({
             evenementId: id,
             utilisateurId,
-            commentaire,
-            statut: 'inscrit',
-          },
-        ], { session });
+          }).session(session);
 
-        created = participation;
-      });
+          if (existing) {
+            throw new Error('ALREADY_REGISTERED');
+          }
+
+          const [participation] = await ParticipationEvenement.create([
+            {
+              evenementId: id,
+              utilisateurId,
+              commentaire,
+              statut: 'inscrit',
+            },
+          ], { session });
+
+          created = participation;
+        },
+        async () => {
+          created = await createParticipationWithoutTransaction({
+            eventId: event._id,
+            utilisateurId,
+            commentaire,
+          });
+        },
+      );
     } catch (error) {
       if (error.message === 'EVENT_FULL') {
         return sendError(res, 409, ERROR_CODES.EVENT_FULL, 'Event capacity reached');
@@ -478,10 +576,7 @@ async function createParticipation(req, res, next) {
           'User is already registered for this event',
         );
       }
-
       throw error;
-    } finally {
-      session.endSession();
     }
 
     return sendSuccess(res, 201, {
@@ -520,26 +615,33 @@ async function deleteParticipation(req, res, next) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
 
-    const session = await mongoose.startSession();
     let deleted;
 
     try {
-      await session.withTransaction(async () => {
-        deleted = await ParticipationEvenement.findOneAndDelete({
-          evenementId: id,
-          utilisateurId,
-        }).session(session);
+      await runWithOptionalTransaction(
+        async (session) => {
+          deleted = await ParticipationEvenement.findOneAndDelete({
+            evenementId: id,
+            utilisateurId,
+          }).session(session);
 
-        if (!deleted) {
-          throw new Error('PARTICIPATION_NOT_FOUND');
-        }
+          if (!deleted) {
+            throw new Error('PARTICIPATION_NOT_FOUND');
+          }
 
-        await Evenement.updateOne(
-          { _id: event._id, participantsCount: { $gt: 0 } },
-          { $inc: { participantsCount: -1 } },
-          { session },
-        );
-      });
+          await Evenement.updateOne(
+            { _id: event._id, participantsCount: { $gt: 0 } },
+            { $inc: { participantsCount: -1 } },
+            { session },
+          );
+        },
+        async () => {
+          deleted = await deleteParticipationWithoutTransaction({
+            eventId: event._id,
+            utilisateurId,
+          });
+        },
+      );
     } catch (error) {
       if (error.message === 'PARTICIPATION_NOT_FOUND') {
         return sendError(
@@ -551,8 +653,6 @@ async function deleteParticipation(req, res, next) {
       }
 
       throw error;
-    } finally {
-      session.endSession();
     }
 
     return sendSuccess(res, 200, {

@@ -54,6 +54,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  jest.restoreAllMocks();
+
   await Promise.all([
     ParticipationEvenement.deleteMany({}),
     Evenement.deleteMany({}),
@@ -308,5 +310,69 @@ describe('Events API integration', () => {
     expect(second.status).toBe(409);
     expect(second.body.success).toBe(false);
     expect(second.body.error.code).toBe('ALREADY_REGISTERED');
+  });
+
+  test('register fallback: succeeds when transactions are not supported', async () => {
+    const startSessionSpy = jest.spyOn(mongoose, 'startSession').mockImplementationOnce(async () => {
+      throw new Error('Transaction numbers are only allowed on a replica set member or mongos');
+    });
+
+    const organisateur = await createUser();
+    const participant = await createUser({
+      email: `fallback_register_${Date.now()}@test.com`,
+    });
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      overrides: { capacite: 2 },
+    });
+
+    const response = await request(app)
+      .post(`/api/events/${event._id}/participations`)
+      .send({ utilisateurId: participant._id.toString() });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+
+    const refreshedEvent = await Evenement.findById(event._id);
+    expect(refreshedEvent.participantsCount).toBe(1);
+
+    startSessionSpy.mockRestore();
+  });
+
+  test('unregister fallback: succeeds when transactions are not supported', async () => {
+    const organisateur = await createUser();
+    const participant = await createUser({
+      email: `fallback_unregister_${Date.now()}@test.com`,
+    });
+    const event = await createEvent({
+      organisateurId: organisateur._id,
+      overrides: { capacite: 2 },
+    });
+
+    await request(app)
+      .post(`/api/events/${event._id}/participations`)
+      .send({ utilisateurId: participant._id.toString() });
+
+    const startSessionSpy = jest.spyOn(mongoose, 'startSession').mockImplementationOnce(async () => {
+      throw new Error('Transaction numbers are only allowed on a replica set member or mongos');
+    });
+
+    const response = await request(app).delete(
+      `/api/events/${event._id}/participations/${participant._id}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+
+    const deletedParticipation = await ParticipationEvenement.findOne({
+      evenementId: event._id,
+      utilisateurId: participant._id,
+    });
+    expect(deletedParticipation).toBeNull();
+
+    const refreshedEvent = await Evenement.findById(event._id);
+    expect(refreshedEvent.participantsCount).toBe(0);
+
+    startSessionSpy.mockRestore();
   });
 });
