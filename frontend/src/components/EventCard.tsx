@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Users as UsersIcon, Pencil, Trash2, Loader2, Building2 } from "lucide-react";
+import { Calendar, MapPin, Users as UsersIcon, Loader2, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
@@ -25,12 +25,13 @@ export interface Event {
   attendees: number;
   participantsCount?: number;
   maxAttendees: number;
-  type: "atelier" | "conference" | "hackathon" | "sortie" | "autre";
+  type: "atelier" | "conference" | "hackathon" | "sortie" | "autre" | "workshop" | "meeting" | "competition";
   organisateurId?: string;
   clubId?: string;
   clubName?: string | null;
   coOrganizerClubIds?: string[];
   coOrganizerClubNames?: string[];
+  organizers?: string[];
 }
 
 interface EventCardProps {
@@ -48,16 +49,22 @@ interface EventCardProps {
 
 const typeColors = {
   atelier: "bg-accent text-accent-foreground",
+  workshop: "bg-accent text-accent-foreground",
   conference: "bg-primary text-primary-foreground",
+  meeting: "bg-secondary text-secondary-foreground",
   hackathon: "bg-gradient-accent text-accent-foreground",
+  competition: "bg-gradient-accent text-accent-foreground",
   sortie: "bg-secondary text-secondary-foreground",
   autre: "bg-muted text-foreground",
 };
 
 const typeLabels = {
   atelier: "Atelier",
+  workshop: "Atelier",
   conference: "Conférence",
+  meeting: "Réunion",
   hackathon: "Hackathon",
+  competition: "Compétition",
   sortie: "Sortie",
   autre: "Autre",
 };
@@ -79,7 +86,11 @@ export const EventCard = ({
   const spotsLeft = event.maxAttendees - attendees;
   const organizerClubNames = Array.from(
     new Set(
-      [event.clubName, ...(event.coOrganizerClubNames || [])]
+      [
+        ...(event.organizers || []),
+        event.clubName,
+        ...(event.coOrganizerClubNames || []),
+      ]
         .filter((name): name is string => Boolean(name && String(name).trim()))
         .map((name) => String(name).trim()),
     ),
@@ -107,14 +118,9 @@ export const EventCard = ({
     <Card className="group hover:shadow-hover transition-all duration-300 border-border hover:border-primary/50">
       <CardHeader>
         <div className="flex items-start justify-between mb-2">
-          <Badge className={typeColors[event.type]}>
-            {typeLabels[event.type]}
+          <Badge className={typeColors[event.type] || typeColors.autre}>
+            {typeLabels[event.type] || typeLabels.autre}
           </Badge>
-          {isRegistered && (
-            <Badge variant="outline" className="text-xs border-primary/40 text-primary">
-              Déjà inscrit
-            </Badge>
-          )}
           {spotsLeft <= 10 && spotsLeft > 0 && (
             <Badge variant="outline" className="text-xs text-accent">
               {spotsLeft} places restantes
@@ -144,26 +150,25 @@ export const EventCard = ({
           </div>
           {organizerClubNames.length > 0 ? (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <Building2 className="w-4 h-4 text-primary" />
-                <span>Clubs organisateurs</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {organizerClubNames.map((clubName) => (
-                  <Badge key={clubName} variant="secondary" className="text-xs">
-                    {clubName}
-                  </Badge>
-                ))}
+                <div className="flex flex-wrap gap-2">
+                  {organizerClubNames.map((clubName) => (
+                    <Badge key={clubName} variant="secondary" className="text-xs font-normal">
+                      {clubName}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
         </div>
         
-        <div className="flex gap-2">
+        <div className="space-y-2">
           {canRegister ? (
             <Button 
               variant={isRegistered ? "outline" : spotsLeft === 0 ? "outline" : "default"}
-              className="flex-1"
+              className="w-full"
               disabled={isBusy || (spotsLeft === 0 && !isRegistered)}
               onClick={() => {
                 if (isRegistered) {
@@ -184,19 +189,20 @@ export const EventCard = ({
             </Button>
           ) : null}
           {canManage ? (
-            <>
+            <div className="grid w-full grid-cols-2 gap-2">
               <Button
-                variant="outline"
-                size="icon"
+                variant="default"
+                size="sm"
+                className="w-full justify-center hover:bg-primary/80"
                 onClick={() => navigate(`/events/${event.id}/edit`)}
                 disabled={isBusy}
               >
-                <Pencil className="w-4 h-4" />
+                Modifier
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={isBusy}>
-                    <Trash2 className="w-4 h-4" />
+                  <Button variant="default" size="sm" className="w-full justify-center hover:bg-destructive hover:text-destructive-foreground" disabled={isBusy}>
+                    Supprimer
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -214,7 +220,7 @@ export const EventCard = ({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-            </>
+            </div>
           ) : null}
         </div>
       </CardContent>

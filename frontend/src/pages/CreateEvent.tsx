@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
@@ -313,11 +314,13 @@ const CreateEvent = () => {
                 </Select>
 
                 {selectedCoOrganizerClubs.length > 0 ? (
-                  <div className="rounded-md border border-border p-3 space-y-2">
+                  <div className="rounded-md border border-border p-2 space-y-2">
                     {selectedCoOrganizerClubs.map((club) => (
-                      <div key={club.id} className="flex items-center justify-between gap-3 text-sm">
-                        <span>{club.nom}</span>
-                        <Button type="button" variant="outline" size="sm" onClick={() => removeCoOrganizerClub(club.id)}>
+                      <div key={club.id} className="flex items-center justify-between gap-2 text-xs">
+                        <Badge variant="secondary" className="max-w-full truncate text-xs font-normal px-2 py-0.5">
+                          {club.nom}
+                        </Badge>
+                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => removeCoOrganizerClub(club.id)}>
                           Retirer
                         </Button>
                       </div>

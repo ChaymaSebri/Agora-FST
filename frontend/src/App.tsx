@@ -35,15 +35,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route 
-                path="/events" 
-                element={
-                  <ProtectedRoute>
-                    <Navbar />
-                    <Events />
-                  </ProtectedRoute>
-                } 
-              />
+              <Route path="/events" element={<><Navbar /><Events /></>} />
               <Route 
                 path="/events/new" 
                 element={

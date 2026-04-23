@@ -41,7 +41,7 @@ const Events = () => {
   const currentUserId = String((user as { id?: string; _id?: string } | null)?.id || (user as { id?: string; _id?: string } | null)?._id || "");
   const currentClubId = String((user as { clubId?: string } | null)?.clubId || "");
   const isClubUser = user?.role === "club";
-  const canCurrentUserRegister = user?.role === "etudiant" || user?.role === "enseignant";
+  const canCurrentUserRegister = !user || user?.role === "etudiant" || user?.role === "enseignant";
 
   useEffect(() => {
     setPage(1);
@@ -155,6 +155,11 @@ const Events = () => {
   };
 
   const handleRegisterEvent = async (id: string) => {
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+
     if (!canCurrentUserRegister) {
       return;
     }
