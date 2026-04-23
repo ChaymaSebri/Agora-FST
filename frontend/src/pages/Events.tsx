@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { EventCard, Event } from "@/components/EventCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
   cancelEventParticipation,
   deleteEvent,
   fetchEvents,
-  listEventParticipations,
+  listMyParticipations,
   registerToEvent,
 } from "@/services/api";
 import {
@@ -24,6 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Events = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
@@ -87,21 +88,17 @@ const Events = () => {
 
       try {
         setIsLoadingRegistrations(true);
-        const entries = await Promise.all(
-          events.map(async (event) => {
-            try {
-              const data = await listEventParticipations(event.id);
-              const isRegistered = (data.items || []).some(
-                (item) => String(item.utilisateurId) === currentUserId,
-              );
-              return [event.id, isRegistered];
-            } catch (error) {
-              return [event.id, false];
-            }
-          }),
+        const eventIds = events.map((event) => String(event.id)).filter(Boolean);
+        const data = await listMyParticipations(eventIds);
+        const registeredIds = new Set(
+          Array.isArray(data?.eventIds)
+            ? data.eventIds.map((eventId) => String(eventId))
+            : [],
         );
 
-        setRegistrationMap(Object.fromEntries(entries));
+        setRegistrationMap(
+          Object.fromEntries(eventIds.map((eventId) => [eventId, registeredIds.has(eventId)])),
+        );
       } catch (error) {
         setRegistrationMap({});
       } finally {
@@ -156,7 +153,13 @@ const Events = () => {
 
   const handleRegisterEvent = async (id: string) => {
     if (!user) {
-      navigate("/auth");
+      const returnTo = `${location.pathname}${location.search}${location.hash}`;
+      navigate("/auth", {
+        state: {
+          returnTo,
+          pendingRegisterEventId: id,
+        },
+      });
       return;
     }
 

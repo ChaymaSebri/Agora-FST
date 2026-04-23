@@ -616,4 +616,170 @@ describe('Events API integration', () => {
     const deleted = await Evenement.findById(event._id);
     expect(deleted).toBeNull();
   });
+
+  test('participations list requires authentication: GET /api/events/:id/participations returns 401', async () => {
+    const ownerClub = await createClubUser();
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+    });
+
+    const response = await request(app).get(`/api/events/${event._id}/participations`);
+
+    expect(response.status).toBe(401);
+  });
+
+  test('participant sees only own participations in event list: GET /api/events/:id/participations', async () => {
+    const ownerClub = await createClubUser();
+    const participant1 = await createUser({ email: `list_p1_${Date.now()}@test.com` });
+    const participant2 = await createUser({ email: `list_p2_${Date.now()}@test.com` });
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+      overrides: { participantsCount: 2 },
+    });
+
+    await ParticipationEvenement.create([
+      {
+        evenementId: event._id,
+        utilisateurId: participant1._id,
+        statut: 'inscrit',
+      },
+      {
+        evenementId: event._id,
+        utilisateurId: participant2._id,
+        statut: 'inscrit',
+      },
+    ]);
+
+    const response = await request(app)
+      .get(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant1));
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.count).toBe(1);
+    expect(response.body.data.items).toHaveLength(1);
+    expect(response.body.data.items[0].utilisateurId.toString()).toBe(participant1._id.toString());
+  });
+
+  test('owner club can view all event participations: GET /api/events/:id/participations', async () => {
+    const ownerClub = await createClubUser();
+    const participant1 = await createUser({ email: `list_owner_p1_${Date.now()}@test.com` });
+    const participant2 = await createUser({ email: `list_owner_p2_${Date.now()}@test.com` });
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+      overrides: { participantsCount: 2 },
+    });
+
+    await ParticipationEvenement.create([
+      {
+        evenementId: event._id,
+        utilisateurId: participant1._id,
+        statut: 'inscrit',
+      },
+      {
+        evenementId: event._id,
+        utilisateurId: participant2._id,
+        statut: 'inscrit',
+      },
+    ]);
+
+    const response = await request(app)
+      .get(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(ownerClub));
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.count).toBe(2);
+    expect(response.body.data.items).toHaveLength(2);
+  });
+
+  test('non-owner club cannot view event participations: GET /api/events/:id/participations returns 403', async () => {
+    const ownerClub = await createClubUser();
+    const otherClub = await createClubUser();
+    const participant = await createUser({ email: `list_forbidden_${Date.now()}@test.com` });
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+      overrides: { participantsCount: 1 },
+    });
+
+    await ParticipationEvenement.create({
+      evenementId: event._id,
+      utilisateurId: participant._id,
+      statut: 'inscrit',
+    });
+
+    const response = await request(app)
+      .get(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(otherClub));
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  test('my participations batch: GET /api/events/participations/me returns only active status and requested ids', async () => {
+    const ownerClub = await createClubUser();
+    const participant = await createUser({ email: `batch_me_${Date.now()}@test.com` });
+    const event1 = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+    });
+    const event2 = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+      overrides: { titre: 'Second event', date: new Date('2026-06-11T09:00:00.000Z') },
+    });
+
+    await ParticipationEvenement.create([
+      {
+        evenementId: event1._id,
+        utilisateurId: participant._id,
+        statut: 'inscrit',
+      },
+      {
+        evenementId: event2._id,
+        utilisateurId: participant._id,
+        statut: 'annule',
+      },
+    ]);
+
+    const response = await request(app)
+      .get('/api/events/participations/me')
+      .set('Authorization', buildAuthHeader(participant))
+      .query({ eventIds: `${event1._id},${event2._id}` });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.eventIds).toEqual([event1._id.toString()]);
+  });
+
+  test('my participations batch: invalid eventIds returns 400', async () => {
+    const participant = await createUser({ email: `batch_invalid_${Date.now()}@test.com` });
+
+    const response = await request(app)
+      .get('/api/events/participations/me')
+      .set('Authorization', buildAuthHeader(participant))
+      .query({ eventIds: 'not-an-objectid' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('my participations batch: non participant role returns 403', async () => {
+    const clubUser = await createClubUser();
+
+    const response = await request(app)
+      .get('/api/events/participations/me')
+      .set('Authorization', buildAuthHeader(clubUser))
+      .query({ eventIds: new mongoose.Types.ObjectId().toString() });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
 });

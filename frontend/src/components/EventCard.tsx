@@ -96,17 +96,16 @@ export const EventCard = ({
     ),
   );
   const isBusy = isDeleting || isRegistering || isCancelling;
-  const actionLabel = isDeleting
-    ? "Suppression..."
-    : isRegistering
-      ? "Inscription..."
-      : isCancelling
-        ? "Annulation..."
-        : isRegistered
-          ? "Annuler inscription"
-          : spotsLeft === 0
-            ? "Complet"
-            : "S'inscrire";
+  const isRegistrationBusy = isRegistering || isCancelling;
+  const registrationLabel = isRegistering
+    ? "Inscription..."
+    : isCancelling
+      ? "Annulation..."
+      : isRegistered
+        ? "Annuler inscription"
+        : spotsLeft === 0
+          ? "Complet"
+          : "S'inscrire";
 
   const handleDelete = async () => {
     if (onDelete) {
@@ -178,13 +177,13 @@ export const EventCard = ({
                 onRegister?.(event.id);
               }}
             >
-              {isBusy ? (
+              {isRegistrationBusy ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {actionLabel}
+                  {registrationLabel}
                 </>
               ) : (
-                actionLabel
+                registrationLabel
               )}
             </Button>
           ) : null}

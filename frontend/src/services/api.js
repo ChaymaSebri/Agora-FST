@@ -201,6 +201,25 @@ export async function listEventParticipations(eventId) {
   }
 }
 
+export async function listMyParticipations(eventIds = []) {
+  try {
+    const sanitizedEventIds = Array.isArray(eventIds)
+      ? eventIds.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+
+    if (sanitizedEventIds.length === 0) {
+      return { eventIds: [] };
+    }
+
+    const response = await api.get('/events/participations/me', {
+      params: { eventIds: sanitizedEventIds.join(',') },
+    });
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
 export async function cancelEventParticipation(eventId, utilisateurId) {
   try {
     const response = await api.delete(`/events/${eventId}/participations/${utilisateurId}`);

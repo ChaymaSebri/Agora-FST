@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,13 +52,20 @@ const Auth = () => {
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+
+  const state = (location.state as { returnTo?: string } | null) ?? null;
+  const redirectTo =
+    typeof state?.returnTo === "string" && state.returnTo.startsWith("/")
+      ? state.returnTo
+      : "/";
 
   useEffect(() => {
     if (user) {
-      navigate("/");
+      navigate(redirectTo, { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, navigate, redirectTo]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +95,7 @@ const Auth = () => {
           title: "Connexion réussie",
           description: "Bienvenue !",
         });
-        navigate("/");
+        navigate(redirectTo, { replace: true });
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -172,7 +179,7 @@ const Auth = () => {
           title: "Compte créé",
           description: "Votre compte a été créé avec succès !",
         });
-        navigate("/");
+        navigate(redirectTo, { replace: true });
       }
     } catch (error) {
       if (error instanceof z.ZodError) {

@@ -888,6 +888,66 @@ async function deleteParticipation(req, res, next) {
   }
 }
 
+async function listMyParticipations(req, res, next) {
+  try {
+    if (!canRequesterParticipate(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only etudiant and enseignant can access personal participation state',
+      );
+    }
+
+    const rawEventIds = req.query.eventIds;
+    const parsedEventIds = Array.isArray(rawEventIds)
+      ? rawEventIds
+      : (typeof rawEventIds === 'string' ? rawEventIds.split(',') : []);
+
+    const eventIds = Array.from(
+      new Set(
+        parsedEventIds
+          .map((value) => String(value || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (eventIds.length > 0) {
+      const hasInvalidEventId = eventIds.some((eventId) => !mongoose.Types.ObjectId.isValid(eventId));
+      if (hasInvalidEventId) {
+        return sendError(
+          res,
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          'eventIds must contain only valid ObjectId values',
+        );
+      }
+    }
+
+    if (eventIds.length === 0) {
+      return sendSuccess(res, 200, { eventIds: [] });
+    }
+
+    const registeredEventIds = await ParticipationEvenement.find({
+      utilisateurId: req.user._id,
+      evenementId: { $in: eventIds },
+      statut: { $in: ACTIVE_PARTICIPATION_STATUSES },
+    }).distinct('evenementId');
+
+    return sendSuccess(res, 200, {
+      eventIds: registeredEventIds.map((eventId) => String(eventId)),
+    });
+  } catch (error) {
+    console.error(error);
+    return sendError(
+      res,
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
+      'Unexpected error while listing personal participations',
+    );
+  }
+}
+
 async function listParticipations(req, res, next) {
   try {
     const { id } = req.params;
@@ -901,7 +961,28 @@ async function listParticipations(req, res, next) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
 
-    const participations = await ParticipationEvenement.find({ evenementId: id }).sort({ dateInscription: -1 });
+    const requesterRole = req.user?.role;
+    const isRequesterParticipant = ['etudiant', 'enseignant'].includes(requesterRole);
+    const isRequesterAdmin = requesterRole === 'admin';
+    const isRequesterOwnerClub = requesterRole === 'club' && isEventOwnedByRequesterClub(event, req);
+
+    if (!isRequesterParticipant && !isRequesterAdmin && !isRequesterOwnerClub) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'You are not allowed to view this event participation list',
+      );
+    }
+
+    const participationFilter = { evenementId: id };
+
+    // Data minimization: participants can only read their own registration rows.
+    if (isRequesterParticipant) {
+      participationFilter.utilisateurId = req.user._id;
+    }
+
+    const participations = await ParticipationEvenement.find(participationFilter).sort({ dateInscription: -1 });
 
     return sendSuccess(res, 200, {
       eventId: id,
@@ -927,5 +1008,6 @@ module.exports = {
   deleteEvent,
   createParticipation,
   deleteParticipation,
+  listMyParticipations,
   listParticipations,
 };
