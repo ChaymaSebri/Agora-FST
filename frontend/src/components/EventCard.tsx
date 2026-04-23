@@ -43,6 +43,7 @@ interface EventCardProps {
   isRegistering?: boolean;
   isCancelling?: boolean;
   canManage?: boolean;
+  canRegister?: boolean;
 }
 
 const typeColors = {
@@ -71,6 +72,7 @@ export const EventCard = ({
   isRegistering = false,
   isCancelling = false,
   canManage = false,
+  canRegister = true,
 }: EventCardProps) => {
   const navigate = useNavigate();
   const attendees = event.participantsCount ?? event.attendees;
@@ -158,27 +160,29 @@ export const EventCard = ({
         </div>
         
         <div className="flex gap-2">
-          <Button 
-            variant={isRegistered ? "outline" : spotsLeft === 0 ? "outline" : "default"}
-            className="flex-1"
-            disabled={isBusy || (spotsLeft === 0 && !isRegistered)}
-            onClick={() => {
-              if (isRegistered) {
-                onCancelRegistration?.(event.id);
-                return;
-              }
-              onRegister?.(event.id);
-            }}
-          >
-            {isBusy ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {actionLabel}
-              </>
-            ) : (
-              actionLabel
-            )}
-          </Button>
+          {canRegister ? (
+            <Button 
+              variant={isRegistered ? "outline" : spotsLeft === 0 ? "outline" : "default"}
+              className="flex-1"
+              disabled={isBusy || (spotsLeft === 0 && !isRegistered)}
+              onClick={() => {
+                if (isRegistered) {
+                  onCancelRegistration?.(event.id);
+                  return;
+                }
+                onRegister?.(event.id);
+              }}
+            >
+              {isBusy ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {actionLabel}
+                </>
+              ) : (
+                actionLabel
+              )}
+            </Button>
+          ) : null}
           {canManage ? (
             <>
               <Button

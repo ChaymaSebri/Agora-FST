@@ -8,8 +8,8 @@ router.post('/', authenticate, eventsController.createEvent);
 router.patch('/:id', authenticate, eventsController.updateEvent);
 router.delete('/:id', authenticate, eventsController.deleteEvent);
 
-router.post('/:id/participations', eventsController.createParticipation);
-router.delete('/:id/participations/:utilisateurId', eventsController.deleteParticipation);
+router.post('/:id/participations', authenticate, eventsController.createParticipation);
+router.delete('/:id/participations/:utilisateurId', authenticate, eventsController.deleteParticipation);
 router.get('/:id/participations', eventsController.listParticipations);
 
 module.exports = router;

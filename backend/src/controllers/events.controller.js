@@ -108,6 +108,10 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function canRequesterParticipate(req) {
+  return req.user && ['etudiant', 'enseignant'].includes(req.user.role);
+}
+
 function isRequesterClub(req) {
   return req.user && req.user.role === 'club' && req.user.clubId;
 }
@@ -684,19 +688,21 @@ async function deleteEvent(req, res, next) {
 async function createParticipation(req, res, next) {
   try {
     const { id } = req.params;
-    const { utilisateurId, commentaire } = req.body || {};
+    const { commentaire } = req.body || {};
+
+    if (!canRequesterParticipate(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only etudiant and enseignant can register to an event',
+      );
+    }
+
+    const utilisateurId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
-    }
-
-    if (!utilisateurId || !mongoose.Types.ObjectId.isValid(utilisateurId)) {
-      return sendError(
-        res,
-        400,
-        ERROR_CODES.VALIDATION_ERROR,
-        'utilisateurId must be a valid ObjectId',
-      );
     }
 
     const [event, user] = await Promise.all([
@@ -792,6 +798,15 @@ async function deleteParticipation(req, res, next) {
   try {
     const { id, utilisateurId } = req.params;
 
+    if (!canRequesterParticipate(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only etudiant and enseignant can cancel an event registration',
+      );
+    }
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
     }
@@ -802,6 +817,15 @@ async function deleteParticipation(req, res, next) {
         400,
         ERROR_CODES.VALIDATION_ERROR,
         'utilisateurId must be a valid ObjectId',
+      );
+    }
+
+    if (String(utilisateurId) !== String(req.user._id)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'You can only cancel your own registration',
       );
     }
 

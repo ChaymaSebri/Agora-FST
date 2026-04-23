@@ -181,10 +181,9 @@ export async function deleteEvent(id) {
   }
 }
 
-export async function registerToEvent(eventId, payload) {
+export async function registerToEvent(eventId, payload = {}) {
   try {
     const response = await api.post(`/events/${eventId}/participations`, {
-      utilisateurId: payload.utilisateurId,
       commentaire: payload.commentaire,
     });
     return extractResponse(response);

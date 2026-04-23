@@ -37,11 +37,11 @@ const Events = () => {
   const [registrationMap, setRegistrationMap] = useState<Record<string, boolean>>({});
   const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false);
   const [busyAction, setBusyAction] = useState<{ id: string; type: "delete" | "register" | "cancel" } | null>(null);
-  const fallbackUtilisateurId = import.meta.env.VITE_UTILISATEUR_ID || "000000000000000000000001";
   const pageSize = 12;
   const currentUserId = String((user as { id?: string; _id?: string } | null)?.id || (user as { id?: string; _id?: string } | null)?._id || "");
   const currentClubId = String((user as { clubId?: string } | null)?.clubId || "");
   const isClubUser = user?.role === "club";
+  const canCurrentUserRegister = user?.role === "etudiant" || user?.role === "enseignant";
 
   useEffect(() => {
     setPage(1);
@@ -80,7 +80,7 @@ const Events = () => {
 
   useEffect(() => {
     const loadRegistrationState = async () => {
-      if (events.length === 0) {
+      if (events.length === 0 || !canCurrentUserRegister || !currentUserId) {
         setRegistrationMap({});
         return;
       }
@@ -92,7 +92,7 @@ const Events = () => {
             try {
               const data = await listEventParticipations(event.id);
               const isRegistered = (data.items || []).some(
-                (item) => item.utilisateurId === fallbackUtilisateurId,
+                (item) => String(item.utilisateurId) === currentUserId,
               );
               return [event.id, isRegistered];
             } catch (error) {
@@ -110,7 +110,7 @@ const Events = () => {
     };
 
     loadRegistrationState();
-  }, [events, fallbackUtilisateurId]);
+  }, [events, canCurrentUserRegister, currentUserId]);
 
   const filteredEvents = events;
 
@@ -155,9 +155,13 @@ const Events = () => {
   };
 
   const handleRegisterEvent = async (id: string) => {
+    if (!canCurrentUserRegister) {
+      return;
+    }
+
     setBusyAction({ id, type: "register" });
     try {
-      await registerToEvent(id, { utilisateurId: fallbackUtilisateurId });
+      await registerToEvent(id);
       updateEventCounts(id, 1);
       setRegistrationMap((prev) => ({ ...prev, [id]: true }));
       toast({
@@ -194,9 +198,13 @@ const Events = () => {
   };
 
   const handleCancelRegistration = async (id: string) => {
+    if (!canCurrentUserRegister || !currentUserId) {
+      return;
+    }
+
     setBusyAction({ id, type: "cancel" });
     try {
-      await cancelEventParticipation(id, fallbackUtilisateurId);
+      await cancelEventParticipation(id, currentUserId);
       updateEventCounts(id, -1);
       setRegistrationMap((prev) => ({ ...prev, [id]: false }));
       toast({
@@ -331,6 +339,7 @@ const Events = () => {
               isRegistering={busyAction?.id === event.id && busyAction.type === "register"}
               isCancelling={busyAction?.id === event.id && busyAction.type === "cancel"}
               canManage={canManageEvent}
+              canRegister={canCurrentUserRegister}
             />
             );
           })}

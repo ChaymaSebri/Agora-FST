@@ -3,11 +3,14 @@ import axios from "axios";
 import api from "@/services/api";
 
 type AuthUser = {
+  id?: string | null;
+  _id?: string | null;
   email?: string | null;
   fullName?: string | null;
   nom?: string | null;
   prenom?: string | null;
   role?: string | null;
+  clubId?: string | null;
 };
 
 type AuthResult = {

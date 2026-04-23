@@ -295,8 +295,8 @@ describe('Events API integration', () => {
 
     const response = await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant))
       .send({
-        utilisateurId: participant._id.toString(),
         commentaire: 'Je participe',
       });
 
@@ -324,11 +324,12 @@ describe('Events API integration', () => {
 
     await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant))
       .send({ utilisateurId: participant._id.toString() });
 
-    const response = await request(app).delete(
-      `/api/events/${event._id}/participations/${participant._id}`,
-    );
+    const response = await request(app)
+      .delete(`/api/events/${event._id}/participations/${participant._id}`)
+      .set('Authorization', buildAuthHeader(participant));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -361,12 +362,14 @@ describe('Events API integration', () => {
 
     const first = await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant1))
       .send({ utilisateurId: participant1._id.toString() });
 
     expect(first.status).toBe(201);
 
     const second = await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant2))
       .send({ utilisateurId: participant2._id.toString() });
 
     expect(second.status).toBe(409);
@@ -388,12 +391,14 @@ describe('Events API integration', () => {
 
     const first = await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant))
       .send({ utilisateurId: participant._id.toString() });
 
     expect(first.status).toBe(201);
 
     const second = await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant))
       .send({ utilisateurId: participant._id.toString() });
 
     expect(second.status).toBe(409);
@@ -418,6 +423,7 @@ describe('Events API integration', () => {
 
     const response = await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant))
       .send({ utilisateurId: participant._id.toString() });
 
     expect(response.status).toBe(201);
@@ -442,6 +448,7 @@ describe('Events API integration', () => {
 
     await request(app)
       .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(participant))
       .send({ utilisateurId: participant._id.toString() });
 
     const startSessionSpy = jest.spyOn(mongoose, 'startSession').mockImplementationOnce(async () => {
@@ -450,7 +457,8 @@ describe('Events API integration', () => {
 
     const response = await request(app).delete(
       `/api/events/${event._id}/participations/${participant._id}`,
-    );
+    )
+      .set('Authorization', buildAuthHeader(participant));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -518,6 +526,25 @@ describe('Events API integration', () => {
         capacite: 40,
         type: 'atelier',
       });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  test('club cannot register to an event: POST /api/events/:id/participations returns 403', async () => {
+    const ownerClub = await createClubUser();
+    const otherClub = await createClubUser();
+
+    const event = await createEvent({
+      organisateurId: ownerClub._id,
+      clubId: ownerClub.clubId,
+    });
+
+    const response = await request(app)
+      .post(`/api/events/${event._id}/participations`)
+      .set('Authorization', buildAuthHeader(otherClub))
+      .send({ commentaire: 'club test' });
 
     expect(response.status).toBe(403);
     expect(response.body.success).toBe(false);
