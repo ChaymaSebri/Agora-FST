@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Loader2, Eye, EyeOff } from "lucide-react";
 import { uploadImageToCloudinary } from "@/lib/cloudinary";
+import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
 import { z } from "zod";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Email invalide" }),
-  password: z.string().min(6, { message: "Le mot de passe doit contenir au moins 6 caractères" }),
+  password: z.string().min(1, { message: "Le mot de passe est requis" }),
 });
 
 const signupSchema = loginSchema.extend({
@@ -33,6 +34,9 @@ const signupSchema = loginSchema.extend({
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
   path: ["confirmPassword"],
+}).refine((data) => isStrongPassword(data.password), {
+  message: getPasswordPolicyMessage(),
+  path: ["password"],
 });
 
 const Auth = () => {

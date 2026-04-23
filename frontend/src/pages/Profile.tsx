@@ -3,13 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/services/api";
 import { uploadImageToCloudinary } from "@/lib/cloudinary";
+import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Save, Eye, EyeOff } from "lucide-react";
 
 type ProfileResponse = {
   email: string;
@@ -23,6 +24,7 @@ type ProfileResponse = {
   club_name?: string;
   club_description?: string;
   club_specialite?: string;
+  club_creation_date?: string;
 };
 
 const Profile = () => {
@@ -41,6 +43,13 @@ const Profile = () => {
   const [clubName, setClubName] = useState("");
   const [clubDescription, setClubDescription] = useState("");
   const [clubSpecialite, setClubSpecialite] = useState("");
+  const [clubCreationDate, setClubCreationDate] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -94,6 +103,7 @@ const Profile = () => {
         setClubName(profile.club_name ?? "");
         setClubDescription(profile.club_description ?? "");
         setClubSpecialite(profile.club_specialite ?? "");
+        setClubCreationDate(profile.club_creation_date ? String(profile.club_creation_date).slice(0, 10) : "");
       } catch (error) {
         const message =
           (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -147,6 +157,36 @@ const Profile = () => {
       return;
     }
 
+    const isPasswordChangeRequested = Boolean(currentPassword || newPassword || confirmNewPassword);
+    if (isPasswordChangeRequested) {
+      if (!currentPassword || !newPassword || !confirmNewPassword) {
+        toast({
+          title: "Validation",
+          description: "Remplissez tous les champs mot de passe",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!isStrongPassword(newPassword)) {
+        toast({
+          title: "Validation",
+          description: getPasswordPolicyMessage(),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (newPassword !== confirmNewPassword) {
+        toast({
+          title: "Validation",
+          description: "La confirmation du nouveau mot de passe ne correspond pas",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       let uploadedAvatarUrl = avatarUrl;
@@ -170,6 +210,9 @@ const Profile = () => {
           club_name: profileRole === "club" ? clubName.trim() : undefined,
           club_description: profileRole === "club" ? clubDescription.trim() : undefined,
           club_specialite: profileRole === "club" ? clubSpecialite.trim() : undefined,
+          club_creation_date: profileRole === "club" ? (clubCreationDate || undefined) : undefined,
+          current_password: isPasswordChangeRequested ? currentPassword : undefined,
+          new_password: isPasswordChangeRequested ? newPassword : undefined,
         },
         {
           headers: {
@@ -190,8 +233,15 @@ const Profile = () => {
       setClubName(profile.club_name ?? "");
       setClubDescription(profile.club_description ?? "");
       setClubSpecialite(profile.club_specialite ?? "");
+      setClubCreationDate(profile.club_creation_date ? String(profile.club_creation_date).slice(0, 10) : "");
       setPhotoFile(null);
       setPreviewUrl("");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmNewPassword(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -247,6 +297,14 @@ const Profile = () => {
                 </Avatar>
               </button>
               <div className="text-sm text-muted-foreground">Cliquez sur la photo pour la changer</div>
+              <Input
+                id="avatar_file"
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                ref={fileInputRef}
+                className="hidden"
+              />
             </div>
 
             <div className="space-y-2">
@@ -352,6 +410,15 @@ const Profile = () => {
                     placeholder="Robotique, Entrepreneuriat..."
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="club-creation-date">Date de création</Label>
+                  <Input
+                    id="club-creation-date"
+                    type="date"
+                    value={clubCreationDate}
+                    onChange={(e) => setClubCreationDate(e.target.value)}
+                  />
+                </div>
               </>
             )}
 
@@ -367,17 +434,71 @@ const Profile = () => {
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="avatar_file">Photo de profil (galerie)</Label>
-              <Input
-                id="avatar_file"
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoChange}
-                ref={fileInputRef}
-                className="hidden"
-              />
-              <p className="text-xs text-muted-foreground">Image stockée sur Cloudinary après enregistrement</p>
+            <div className="space-y-3">
+              <Label>Changer le mot de passe</Label>
+              <div className="space-y-2">
+                <Label htmlFor="current-password" className="text-xs text-muted-foreground">Mot de passe actuel</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="current-password"
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowCurrentPassword((value) => !value)}
+                    aria-label="Afficher ou masquer le mot de passe"
+                  >
+                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-password" className="text-xs text-muted-foreground">Nouveau mot de passe</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="new-password"
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowNewPassword((value) => !value)}
+                    aria-label="Afficher ou masquer le mot de passe"
+                  >
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-new-password" className="text-xs text-muted-foreground">Confirmer le nouveau mot de passe</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="confirm-new-password"
+                    type={showConfirmNewPassword ? "text" : "password"}
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowConfirmNewPassword((value) => !value)}
+                    aria-label="Afficher ou masquer le mot de passe"
+                  >
+                    {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
             </div>
 
             <Button type="submit" variant="hero" disabled={saving} className="w-full">
@@ -388,7 +509,6 @@ const Profile = () => {
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4 mr-2" />
                   Enregistrer
                 </>
               )}

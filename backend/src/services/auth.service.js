@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 
 const { Utilisateur, Club } = require('../models');
 const ApiError = require('../utils/apiError');
+const { isStrongPassword, getPasswordPolicyMessage } = require('../utils/passwordValidator');
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -144,8 +145,8 @@ async function register(payload) {
     throw new ApiError(400, 'nom et prenom sont obligatoires pour ce role');
   }
 
-  if (String(userInput.password).length < 6) {
-    throw new ApiError(400, 'Le mot de passe doit contenir au moins 6 caracteres');
+  if (!isStrongPassword(userInput.password)) {
+    throw new ApiError(400, getPasswordPolicyMessage());
   }
 
   validateRoleSpecificFields(userInput);
