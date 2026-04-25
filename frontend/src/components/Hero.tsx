@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
-import heroImage from "@/assets/hero-image.jpg";
+import FST from "@/assets/FST.jpg";
 
 export const Hero = () => {
   return (
@@ -57,7 +57,7 @@ export const Hero = () => {
           <div className="relative animate-slide-up hidden md:block">
             <div className="absolute inset-0 bg-gradient-primary opacity-20 blur-3xl rounded-full"></div>
             <img
-              src={heroImage}
+              src={FST}
               alt="Étudiants collaborant sur des projets"
               className="relative rounded-2xl shadow-hover w-full h-auto object-cover"
             />
