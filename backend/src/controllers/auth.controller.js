@@ -18,6 +18,24 @@ async function login(req, res, next) {
   }
 }
 
+async function verifyEmail(req, res, next) {
+  try {
+    const result = await authService.verifyEmail(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function resendVerificationCode(req, res, next) {
+  try {
+    const result = await authService.resendVerificationCode(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function logout(req, res) {
   return res.status(200).json({
     message: 'Deconnexion reussie',
@@ -33,6 +51,8 @@ async function me(req, res) {
 module.exports = {
   register,
   login,
+  verifyEmail,
+  resendVerificationCode,
   logout,
   me,
 };

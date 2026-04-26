@@ -14,11 +14,20 @@ type AuthUser = {
 
 type AuthResult = {
   error: { message: string } | null;
+  needsVerification?: boolean;
+  email?: string;
+  message?: string;
 };
 
 type BackendAuthResponse = {
   token: string;
   user: AuthUser;
+};
+
+type RegistrationResponse = {
+  needsVerification?: boolean;
+  email?: string;
+  message?: string;
 };
 
 type AuthContextValue = {
@@ -40,6 +49,8 @@ type AuthContextValue = {
     clubSpecialite?: string;
     avatarUrl?: string;
   }) => Promise<AuthResult>;
+  verifyEmail: (payload: { email: string; code: string }) => Promise<AuthResult>;
+  resendVerificationCode: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -129,7 +140,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signUp: async (payload) => {
         try {
-          const { data } = await api.post<BackendAuthResponse>("/auth/register", payload);
+          const { data } = await api.post<RegistrationResponse>("/auth/register", payload);
+
+          return {
+            error: null,
+            needsVerification: Boolean(data.needsVerification),
+            email: data.email,
+            message: data.message,
+          };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de l inscription")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de l inscription";
+
+          return { error: { message } };
+        }
+      },
+      verifyEmail: async ({ email, code }) => {
+        try {
+          const { data } = await api.post<BackendAuthResponse>("/auth/verify-email", {
+            email,
+            code,
+          });
 
           localStorage.setItem("authToken", data.token);
           setUser(data.user);
@@ -137,10 +171,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: null };
         } catch (error) {
           const message = axios.isAxiosError(error)
-            ? (error.response?.data?.message ?? "Erreur lors de l inscription")
+            ? (error.response?.data?.message ?? "Erreur lors de la verification")
             : error instanceof Error
               ? error.message
-              : "Erreur lors de l inscription";
+              : "Erreur lors de la verification";
+
+          return { error: { message } };
+        }
+      },
+      resendVerificationCode: async (email) => {
+        try {
+          const { data } = await api.post<{ message: string }>("/auth/resend-verification-code", {
+            email,
+          });
+
+          return {
+            error: null,
+            email,
+            message: data.message,
+          };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de lenvoi du code")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de lenvoi du code";
 
           return { error: { message } };
         }
@@ -174,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
 
   if (!context) {
@@ -184,6 +239,8 @@ export function useAuth() {
       isAdmin: false,
       signIn: async () => ({ error: null }),
       signUp: async () => ({ error: null }),
+      verifyEmail: async () => ({ error: null }),
+      resendVerificationCode: async () => ({ error: null }),
       signOut: async () => undefined,
       refreshUser: async () => undefined,
     };

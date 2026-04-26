@@ -26,6 +26,7 @@ async function seedDefaultAdmin() {
     email: adminEmail,
     motDePasse: passwordHash,
     role: 'admin',
+    emailVerified: true,
   });
 
   console.log(`Default admin created: ${createdAdmin.email}`);

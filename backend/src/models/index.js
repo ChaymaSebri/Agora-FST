@@ -26,6 +26,10 @@ const utilisateurSchema = new Schema(
     },
     email: { type: String, required: true, unique: true, lowercase: true },
     motDePasse: { type: String, required: true },
+    emailVerified: { type: Boolean, default: true },
+    emailVerificationCodeHash: { type: String },
+    emailVerificationCodeExpiresAt: { type: Date },
+    emailVerificationRequestedAt: { type: Date },
     role: {
       type: String,
       enum: ['etudiant', 'enseignant', 'club', 'admin'],

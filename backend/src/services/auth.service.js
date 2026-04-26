@@ -1,13 +1,51 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const { Utilisateur, Club } = require('../models');
 const ApiError = require('../utils/apiError');
 const { isStrongPassword, getPasswordPolicyMessage } = require('../utils/passwordValidator');
+const { EmailDeliveryRejectedError, sendVerificationCodeEmail } = require('./email.service');
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const ROLES = ['etudiant', 'enseignant', 'club'];
+const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function createVerificationCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+}
+
+async function updateVerificationCode(userDocument) {
+  const verificationCode = createVerificationCode();
+  const verificationCodeHash = await bcrypt.hash(verificationCode, SALT_ROUNDS);
+
+  userDocument.emailVerified = false;
+  userDocument.emailVerificationCodeHash = verificationCodeHash;
+  userDocument.emailVerificationCodeExpiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MS);
+  userDocument.emailVerificationRequestedAt = new Date();
+  await userDocument.save();
+
+  await sendVerificationCodeEmail({
+    to: userDocument.email,
+    code: verificationCode,
+    displayName: [userDocument.prenom, userDocument.nom].filter(Boolean).join(' ').trim(),
+  }).catch((error) => {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    if (error instanceof EmailDeliveryRejectedError || error?.code === 'EMAIL_REJECTED') {
+      throw new ApiError(400, 'Adresse email invalide ou inaccessible');
+    }
+
+    throw new ApiError(502, 'Impossible d envoyer le code de verification pour le moment');
+  });
+}
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -40,7 +78,7 @@ function splitFullName(fullName) {
 function normalizeRegistrationPayload(payload) {
   const normalized = { ...payload };
 
-  normalized.email = String(payload.email || '').trim().toLowerCase();
+  normalized.email = normalizeEmail(payload.email);
   normalized.password = payload.password || payload.motDePasse || '';
   normalized.role = String(payload.role || '').trim();
 
@@ -111,6 +149,7 @@ function sanitizeUser(userDocument) {
     grade: userDocument.grade,
     specialite: userDocument.specialite,
     avatar_url: userDocument.avatarUrl || '',
+    emailVerified: Boolean(userDocument.emailVerified),
     clubId: userDocument.clubId,
     competenceIds: userDocument.competenceIds,
     createdAt: userDocument.createdAt,
@@ -186,6 +225,7 @@ async function register(payload) {
       prenom: userInput.prenom,
       email: userInput.email,
       motDePasse: passwordHash,
+      emailVerified: false,
       role: userInput.role,
       niveau: userInput.niveau,
       filiere: userInput.filiere,
@@ -195,9 +235,14 @@ async function register(payload) {
       clubId: userInput.clubId,
       competenceIds: userInput.competenceIds,
     });
+
+    await updateVerificationCode(createdUser);
   } catch (error) {
     if (createdClub) {
       await Club.findByIdAndDelete(createdClub._id);
+    }
+    if (createdUser) {
+      await Utilisateur.findByIdAndDelete(createdUser._id);
     }
     throw error;
   }
@@ -209,15 +254,14 @@ async function register(payload) {
   }
 
   return {
-    token: signToken(createdUser),
-    user: sanitizeUser(createdUser),
+    needsVerification: true,
+    email: createdUser.email,
+    message: 'Un code de verification a ete envoye a votre adresse email.',
   };
 }
 
 async function login(payload) {
-  const email = String(payload.email || '')
-    .trim()
-    .toLowerCase();
+  const email = normalizeEmail(payload.email);
   const password = payload.password || '';
 
   if (!email || !password) {
@@ -227,6 +271,10 @@ async function login(payload) {
   const user = await Utilisateur.findOne({ email });
   if (!user) {
     throw new ApiError(401, 'Email ou mot de passe incorrect');
+  }
+
+  if (!user.emailVerified) {
+    throw new ApiError(403, 'Veuillez verifier votre adresse email avant de vous connecter');
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.motDePasse);
@@ -240,7 +288,78 @@ async function login(payload) {
   };
 }
 
+async function verifyEmail(payload) {
+  const email = normalizeEmail(payload.email);
+  const code = String(payload.code || '').trim();
+
+  if (!email || !code) {
+    throw new ApiError(400, 'email et code sont obligatoires');
+  }
+
+  const user = await Utilisateur.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, 'Compte introuvable');
+  }
+
+  if (user.emailVerified) {
+    return {
+      token: signToken(user),
+      user: sanitizeUser(user),
+      alreadyVerified: true,
+    };
+  }
+
+  if (!user.emailVerificationCodeHash || !user.emailVerificationCodeExpiresAt) {
+    throw new ApiError(400, 'Aucun code de verification actif. Demandez un nouveau code.');
+  }
+
+  if (user.emailVerificationCodeExpiresAt.getTime() < Date.now()) {
+    throw new ApiError(400, 'Le code de verification a expire. Demandez un nouveau code.');
+  }
+
+  const isCodeValid = await bcrypt.compare(code, user.emailVerificationCodeHash);
+  if (!isCodeValid) {
+    throw new ApiError(400, 'Code de verification invalide');
+  }
+
+  user.emailVerified = true;
+  user.emailVerificationCodeHash = undefined;
+  user.emailVerificationCodeExpiresAt = undefined;
+  user.emailVerificationRequestedAt = undefined;
+  await user.save();
+
+  return {
+    token: signToken(user),
+    user: sanitizeUser(user),
+  };
+}
+
+async function resendVerificationCode(payload) {
+  const email = normalizeEmail(payload.email);
+
+  if (!email) {
+    throw new ApiError(400, 'email est obligatoire');
+  }
+
+  const user = await Utilisateur.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, 'Compte introuvable');
+  }
+
+  if (user.emailVerified) {
+    throw new ApiError(400, 'Adresse email deja verifiee');
+  }
+
+  await updateVerificationCode(user);
+
+  return {
+    message: 'Un nouveau code de verification a ete envoye.',
+  };
+}
+
 module.exports = {
   register,
   login,
+  verifyEmail,
+  resendVerificationCode,
 };
