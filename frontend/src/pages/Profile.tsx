@@ -1,16 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/services/api";
-import { uploadImageToCloudinary } from "@/lib/cloudinary";
-import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Save, Eye, EyeOff } from "lucide-react";
+import {
+  Loader2,
+  ArrowLeft,
+  Pencil,
+  KeyRound,
+  Mail,
+  User as UserIcon,
+  Building2,
+  GraduationCap,
+  BadgeInfo,
+  CalendarDays,
+} from "lucide-react";
 
 type ProfileResponse = {
   email: string;
@@ -28,14 +35,13 @@ type ProfileResponse = {
 };
 
 const Profile = () => {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState<ProfileResponse["role"] | "">("");
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [email, setEmail] = useState("");
-  const [profileRole, setProfileRole] = useState<ProfileResponse["role"] | "">("");
   const [niveau, setNiveau] = useState("");
   const [filiere, setFiliere] = useState("");
   const [grade, setGrade] = useState("");
@@ -44,37 +50,8 @@ const Profile = () => {
   const [clubDescription, setClubDescription] = useState("");
   const [clubSpecialite, setClubSpecialite] = useState("");
   const [clubCreationDate, setClubCreationDate] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0] || null;
-    setPhotoFile(selectedFile);
-
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl("");
-    }
-
-    if (selectedFile) {
-      setPreviewUrl(URL.createObjectURL(selectedFile));
-    }
-  };
+  const displayRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : user?.role || "—";
 
   useEffect(() => {
     if (!user) {
@@ -85,177 +62,36 @@ const Profile = () => {
     const fetchProfile = async () => {
       try {
         const token = localStorage.getItem("authToken");
-        const { data } = await api.get("/users/me", {
+        const { data } = await api.get<ProfileResponse>("/users/me", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
-        const profile = data as ProfileResponse;
-        setFullName(profile.full_name ?? "");
-        setAvatarUrl(profile.avatar_url ?? "");
-        setEmail(profile.email ?? user.email ?? "");
-        setProfileRole(profile.role ?? "");
-        setNiveau(profile.niveau ?? "");
-        setFiliere(profile.filiere ?? "");
-        setGrade(profile.grade ?? "");
-        setSpecialite(profile.specialite ?? "");
-        setClubName(profile.club_name ?? "");
-        setClubDescription(profile.club_description ?? "");
-        setClubSpecialite(profile.club_specialite ?? "");
-        setClubCreationDate(profile.club_creation_date ? String(profile.club_creation_date).slice(0, 10) : "");
+        setRole(data.role ?? "");
+        setFullName(data.full_name ?? "");
+        setAvatarUrl(data.avatar_url ?? "");
+        setEmail(data.email ?? user.email ?? "");
+        setNiveau(data.niveau ?? "");
+        setFiliere(data.filiere ?? "");
+        setGrade(data.grade ?? "");
+        setSpecialite(data.specialite ?? "");
+        setClubName(data.club_name ?? "");
+        setClubDescription(data.club_description ?? "");
+        setClubSpecialite(data.club_specialite ?? "");
+        setClubCreationDate(data.club_creation_date ? String(data.club_creation_date).slice(0, 10) : "");
       } catch (error) {
         const message =
           (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
           "Impossible de charger le profil";
         toast({ title: "Erreur", description: message, variant: "destructive" });
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
     fetchProfile();
   }, [user]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    if (profileRole !== "club" && fullName.trim().length < 1) {
-      toast({
-        title: "Validation",
-        description: "Le nom est requis",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (profileRole === "etudiant" && (!niveau.trim() || !filiere.trim())) {
-      toast({
-        title: "Validation",
-        description: "Niveau et filière sont requis pour un étudiant",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (profileRole === "enseignant" && !grade.trim()) {
-      toast({
-        title: "Validation",
-        description: "Le grade est requis pour un enseignant",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (profileRole === "club" && !clubName.trim()) {
-      toast({
-        title: "Validation",
-        description: "Le nom du club est requis",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const isPasswordChangeRequested = Boolean(currentPassword || newPassword || confirmNewPassword);
-    if (isPasswordChangeRequested) {
-      if (!currentPassword || !newPassword || !confirmNewPassword) {
-        toast({
-          title: "Validation",
-          description: "Remplissez tous les champs mot de passe",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (!isStrongPassword(newPassword)) {
-        toast({
-          title: "Validation",
-          description: getPasswordPolicyMessage(),
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (newPassword !== confirmNewPassword) {
-        toast({
-          title: "Validation",
-          description: "La confirmation du nouveau mot de passe ne correspond pas",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    setSaving(true);
-    try {
-      let uploadedAvatarUrl = avatarUrl;
-      if (photoFile) {
-        uploadedAvatarUrl = await uploadImageToCloudinary(photoFile);
-      }
-
-      const token = localStorage.getItem("authToken");
-      const { data } = await api.patch(
-        "/users/me",
-        {
-          full_name: profileRole === "club" ? undefined : fullName.trim(),
-          avatar_url: uploadedAvatarUrl,
-          niveau: profileRole === "etudiant" ? niveau.trim() : undefined,
-          filiere: profileRole === "etudiant" ? filiere.trim() : undefined,
-          grade: profileRole === "enseignant" ? grade.trim() : undefined,
-          specialite:
-            profileRole === "etudiant" || profileRole === "enseignant" || profileRole === "admin"
-              ? specialite.trim()
-              : undefined,
-          club_name: profileRole === "club" ? clubName.trim() : undefined,
-          club_description: profileRole === "club" ? clubDescription.trim() : undefined,
-          club_specialite: profileRole === "club" ? clubSpecialite.trim() : undefined,
-          club_creation_date: profileRole === "club" ? (clubCreationDate || undefined) : undefined,
-          current_password: isPasswordChangeRequested ? currentPassword : undefined,
-          new_password: isPasswordChangeRequested ? newPassword : undefined,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const profile = data as ProfileResponse;
-      setFullName(profile.full_name ?? "");
-      setAvatarUrl(profile.avatar_url ?? "");
-      setEmail(profile.email ?? email);
-      setProfileRole(profile.role ?? profileRole);
-      setNiveau(profile.niveau ?? "");
-      setFiliere(profile.filiere ?? "");
-      setGrade(profile.grade ?? "");
-      setSpecialite(profile.specialite ?? "");
-      setClubName(profile.club_name ?? "");
-      setClubDescription(profile.club_description ?? "");
-      setClubSpecialite(profile.club_specialite ?? "");
-      setClubCreationDate(profile.club_creation_date ? String(profile.club_creation_date).slice(0, 10) : "");
-      setPhotoFile(null);
-      setPreviewUrl("");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmNewPassword("");
-      setShowCurrentPassword(false);
-      setShowNewPassword(false);
-      setShowConfirmNewPassword(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      await refreshUser();
-      toast({ title: "Profil mis à jour", description: "Vos informations ont été enregistrées." });
-    } catch (error) {
-      const message =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        "Impossible de mettre a jour le profil";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -266,11 +102,10 @@ const Profile = () => {
   }
 
   const initial = (fullName || email).charAt(0).toUpperCase();
-  const displayedAvatar = previewUrl || avatarUrl || undefined;
 
   return (
     <div className="container mx-auto px-4 pt-24 pb-12 max-w-2xl">
-      <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="mb-4">
+      <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="mb-4">
         <ArrowLeft className="w-4 h-4 mr-2" />
         Retour
       </Button>
@@ -278,242 +113,136 @@ const Profile = () => {
       <Card>
         <CardHeader>
           <CardTitle>Mon profil</CardTitle>
-          <CardDescription>Gérez vos informations personnelles</CardDescription>
+          <CardDescription>Vos informations personnelles</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                aria-label="Changer la photo de profil"
-              >
-                <Avatar className="w-20 h-20 cursor-pointer ring-2 ring-transparent transition hover:ring-primary/50">
-                  <AvatarImage src={displayedAvatar} alt={fullName} />
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xl">
-                    {initial}
-                  </AvatarFallback>
-                </Avatar>
-              </button>
-              <div className="text-sm text-muted-foreground">Cliquez sur la photo pour la changer</div>
-              <Input
-                id="avatar_file"
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoChange}
-                ref={fileInputRef}
-                className="hidden"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" value={email} disabled />
-              <p className="text-xs text-muted-foreground">L'email ne peut pas être modifié ici.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="role">Rôle</Label>
-              <Input id="role" value={profileRole || user?.role || ""} disabled />
-            </div>
-
-            {profileRole !== "club" && (
-              <div className="space-y-2">
-                <Label htmlFor="full_name">Nom complet</Label>
-                <Input
-                  id="full_name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Votre nom"
-                  maxLength={100}
-                />
+        <CardContent className="space-y-6">
+          <div className="flex items-center gap-4">
+            <Avatar className="w-20 h-20">
+              <AvatarImage src={avatarUrl || undefined} alt={fullName} />
+              <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+                {initial}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <div className="text-lg font-semibold text-foreground">
+                {fullName || "Sans nom"}
               </div>
-            )}
+              <div className="text-sm text-muted-foreground">{email}</div>
+            </div>
+          </div>
 
-            {profileRole === "etudiant" && (
+          <div className="space-y-3 border-t border-border pt-6">
+            <div className="flex items-start gap-3">
+              <UserIcon className="w-4 h-4 mt-1 text-muted-foreground" />
+              <div>
+                <div className="text-xs text-muted-foreground">Nom complet</div>
+                <div className="text-sm text-foreground">{fullName || "—"}</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <Mail className="w-4 h-4 mt-1 text-muted-foreground" />
+              <div>
+                <div className="text-xs text-muted-foreground">Email</div>
+                <div className="text-sm text-foreground">{email}</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
+              <div>
+                <div className="text-xs text-muted-foreground">Rôle</div>
+                <div className="text-sm text-foreground">{displayRole}</div>
+              </div>
+            </div>
+
+            {role === "etudiant" && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="niveau">Niveau</Label>
-                  <Input id="niveau" value={niveau} onChange={(e) => setNiveau(e.target.value)} placeholder="L3" />
+                <div className="flex items-start gap-3">
+                  <GraduationCap className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Niveau</div>
+                    <div className="text-sm text-foreground">{niveau || "—"}</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="filiere">Filière</Label>
-                  <Input
-                    id="filiere"
-                    value={filiere}
-                    onChange={(e) => setFiliere(e.target.value)}
-                    placeholder="Informatique"
-                  />
+                <div className="flex items-start gap-3">
+                  <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Filière</div>
+                    <div className="text-sm text-foreground">{filiere || "—"}</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="specialite-etudiant">Spécialité</Label>
-                  <Input
-                    id="specialite-etudiant"
-                    value={specialite}
-                    onChange={(e) => setSpecialite(e.target.value)}
-                    placeholder="IA, Web, Cybersécurité..."
-                  />
+                <div className="flex items-start gap-3">
+                  <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Spécialité</div>
+                    <div className="text-sm text-foreground">{specialite || "—"}</div>
+                  </div>
                 </div>
               </>
             )}
 
-            {profileRole === "enseignant" && (
+            {role === "enseignant" && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="grade">Grade</Label>
-                  <Input
-                    id="grade"
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                    placeholder="Maître de conférences"
-                  />
+                <div className="flex items-start gap-3">
+                  <GraduationCap className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Grade</div>
+                    <div className="text-sm text-foreground">{grade || "—"}</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="specialite-enseignant">Spécialité</Label>
-                  <Input
-                    id="specialite-enseignant"
-                    value={specialite}
-                    onChange={(e) => setSpecialite(e.target.value)}
-                    placeholder="Data, Génie logiciel..."
-                  />
+                <div className="flex items-start gap-3">
+                  <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Spécialité</div>
+                    <div className="text-sm text-foreground">{specialite || "—"}</div>
+                  </div>
                 </div>
               </>
             )}
 
-            {profileRole === "club" && (
+            {role === "club" && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="club-name">Nom du club</Label>
-                  <Input
-                    id="club-name"
-                    value={clubName}
-                    onChange={(e) => setClubName(e.target.value)}
-                    placeholder="Club Robotique"
-                  />
+                <div className="flex items-start gap-3">
+                  <Building2 className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Nom du club</div>
+                    <div className="text-sm text-foreground">{clubName || "—"}</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="club-description">Description</Label>
-                  <Input
-                    id="club-description"
-                    value={clubDescription}
-                    onChange={(e) => setClubDescription(e.target.value)}
-                    placeholder="Description du club"
-                  />
+                <div className="flex items-start gap-3">
+                  <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Description</div>
+                    <div className="text-sm text-foreground">{clubDescription || "—"}</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="club-specialite">Spécialité</Label>
-                  <Input
-                    id="club-specialite"
-                    value={clubSpecialite}
-                    onChange={(e) => setClubSpecialite(e.target.value)}
-                    placeholder="Robotique, Entrepreneuriat..."
-                  />
+                <div className="flex items-start gap-3">
+                  <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Spécialité</div>
+                    <div className="text-sm text-foreground">{clubSpecialite || "—"}</div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="club-creation-date">Date de création</Label>
-                  <Input
-                    id="club-creation-date"
-                    type="date"
-                    value={clubCreationDate}
-                    onChange={(e) => setClubCreationDate(e.target.value)}
-                  />
+                <div className="flex items-start gap-3">
+                  <CalendarDays className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Date de création</div>
+                    <div className="text-sm text-foreground">{clubCreationDate || "—"}</div>
+                  </div>
                 </div>
               </>
             )}
+          </div>
 
-            {profileRole === "admin" && (
-              <div className="space-y-2">
-                <Label htmlFor="specialite-admin">Spécialité</Label>
-                <Input
-                  id="specialite-admin"
-                  value={specialite}
-                  onChange={(e) => setSpecialite(e.target.value)}
-                  placeholder="Optionnel"
-                />
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <Label>Changer le mot de passe</Label>
-              <div className="space-y-2">
-                <Label htmlFor="current-password" className="text-xs text-muted-foreground">Mot de passe actuel</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="current-password"
-                    type={showCurrentPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowCurrentPassword((value) => !value)}
-                    aria-label="Afficher ou masquer le mot de passe"
-                  >
-                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password" className="text-xs text-muted-foreground">Nouveau mot de passe</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="new-password"
-                    type={showNewPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowNewPassword((value) => !value)}
-                    aria-label="Afficher ou masquer le mot de passe"
-                  >
-                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-new-password" className="text-xs text-muted-foreground">Confirmer le nouveau mot de passe</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="confirm-new-password"
-                    type={showConfirmNewPassword ? "text" : "password"}
-                    value={confirmNewPassword}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowConfirmNewPassword((value) => !value)}
-                    aria-label="Afficher ou masquer le mot de passe"
-                  >
-                    {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <Button type="submit" variant="hero" disabled={saving} className="w-full">
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Enregistrement...
-                </>
-              ) : (
-                <>
-                  Enregistrer
-                </>
-              )}
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button variant="hero" className="flex-1" onClick={() => navigate("/profile/edit")}>
+              <Pencil className="w-4 h-4 mr-2" />
+              Modifier le profil
             </Button>
-          </form>
+            <Button variant="outline" className="flex-1" onClick={() => navigate("/profile/password")}>
+              <KeyRound className="w-4 h-4 mr-2" />
+              Changer le mot de passe
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

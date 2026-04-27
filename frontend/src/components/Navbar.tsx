@@ -44,6 +44,9 @@ export const Navbar = () => {
         return "Membre";
     }
   })();
+  const displayRoleLabel = roleLabel
+    ? roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1)
+    : "Membre";
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
@@ -88,7 +91,7 @@ export const Navbar = () => {
                   <div className="px-2 py-1.5 text-sm">
                     <div className="font-medium">{user.email}</div>
                     <div className="text-xs text-muted-foreground">
-                      {roleLabel}
+                      {displayRoleLabel}
                     </div>
                   </div>
                   <DropdownMenuSeparator />

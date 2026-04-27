@@ -10,8 +10,8 @@ import Admin from "./pages/Admin";
 import CreateEvent from "./pages/CreateEvent";
 import EditEvent from "./pages/EditEvent";
 import Profile from "./pages/Profile";
-// import EditProfile from "./pages/EditProfile";
-// import ChangePassword from "./pages/ChangePassword";
+import EditProfile from "./pages/EditProfile";
+import ChangePassword from "./pages/ChangePassword";
 import { Navbar } from "@/components/Navbar";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -74,7 +74,7 @@ const App = () => (
                   </ProtectedRoute>
                 } 
               />
-              {/* <Route 
+              <Route 
                 path="/profile/edit" 
                 element={
                   <ProtectedRoute>
@@ -91,7 +91,7 @@ const App = () => (
                     <ChangePassword />
                   </ProtectedRoute>
                 } 
-              /> */}
+              />
               <Route 
                 path="/admin" 
                 element={
