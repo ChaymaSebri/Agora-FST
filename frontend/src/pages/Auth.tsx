@@ -9,14 +9,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Loader2, Eye, EyeOff } from "lucide-react";
+import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
 import { z } from "zod";
 
-const loginSchema = z.object({
+const authBaseSchema = z.object({
   email: z.string().email({ message: "Email invalide" }),
-  password: z.string().min(6, { message: "Le mot de passe doit contenir au moins 6 caractères" }),
+  password: z.string().min(1, { message: "Le mot de passe est requis" }),
 });
 
-const signupSchema = loginSchema.extend({
+const loginSchema = authBaseSchema;
+
+const signupSchema = authBaseSchema.extend({
   fullName: z.string().optional(),
   role: z.enum(["etudiant", "enseignant", "club"], {
     message: "Le rôle est obligatoire",
@@ -25,15 +28,21 @@ const signupSchema = loginSchema.extend({
   niveau: z.string().optional(),
   filiere: z.string().optional(),
   grade: z.string().optional(),
+  specialite: z.string().optional(),
   clubName: z.string().optional(),
   clubDescription: z.string().optional(),
+  clubSpecialite: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
   path: ["confirmPassword"],
+}).refine((data) => isStrongPassword(data.password), {
+  message: getPasswordPolicyMessage(),
+  path: ["password"],
 });
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [authTab, setAuthTab] = useState<"login" | "signup">("login");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
@@ -47,10 +56,14 @@ const Auth = () => {
   const [signupNiveau, setSignupNiveau] = useState("");
   const [signupFiliere, setSignupFiliere] = useState("");
   const [signupGrade, setSignupGrade] = useState("");
+  const [signupSpecialite, setSignupSpecialite] = useState("");
   const [signupClubName, setSignupClubName] = useState("");
   const [signupClubDescription, setSignupClubDescription] = useState("");
+  const [signupClubSpecialite, setSignupClubSpecialite] = useState("");
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, verifyEmail, resendVerificationCode, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -77,6 +90,10 @@ const Auth = () => {
       const { error } = await signIn(loginEmail, loginPassword);
       
       if (error) {
+        if (error.message.toLowerCase().includes("verifier votre adresse email")) {
+          setPendingVerificationEmail(loginEmail);
+          setAuthTab("signup");
+        }
         if (error.message.includes("Invalid login credentials")) {
           toast({
             title: "Erreur de connexion",
@@ -123,8 +140,10 @@ const Auth = () => {
         niveau: signupNiveau,
         filiere: signupFiliere,
         grade: signupGrade,
+        specialite: signupSpecialite,
         clubName: signupClubName,
         clubDescription: signupClubDescription,
+        clubSpecialite: signupClubSpecialite,
       });
 
       if (signupRole !== "club" && signupFullName.trim().length < 2) {
@@ -148,6 +167,7 @@ const Auth = () => {
       }
       
       setIsLoading(true);
+
       const { error } = await signUp({
         email: signupEmail,
         password: signupPassword,
@@ -156,8 +176,13 @@ const Auth = () => {
         niveau: signupRole === "etudiant" ? signupNiveau : undefined,
         filiere: signupRole === "etudiant" ? signupFiliere : undefined,
         grade: signupRole === "enseignant" ? signupGrade : undefined,
+        specialite:
+          signupRole === "etudiant" || signupRole === "enseignant"
+            ? signupSpecialite
+            : undefined,
         clubName: signupRole === "club" ? signupClubName : undefined,
         clubDescription: signupRole === "club" ? signupClubDescription : undefined,
+        clubSpecialite: signupRole === "club" ? signupClubSpecialite : undefined,
       });
       
       if (error) {
@@ -175,11 +200,13 @@ const Auth = () => {
           });
         }
       } else {
+        setPendingVerificationEmail(signupEmail);
+        setVerificationCode("");
+        setAuthTab("signup");
         toast({
-          title: "Compte créé",
-          description: "Votre compte a été créé avec succès !",
+          title: "Code envoyé",
+          description: "Saisissez le code reçu par email pour activer votre compte.",
         });
-        navigate(redirectTo, { replace: true });
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -192,6 +219,93 @@ const Auth = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleVerifyEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      if (!pendingVerificationEmail) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            message: "Veuillez d'abord creer un compte ou saisir un email a verifier",
+            path: ["email"],
+          },
+        ]);
+      }
+
+      if (verificationCode.trim().length !== 6) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            message: "Le code doit contenir 6 chiffres",
+            path: ["code"],
+          },
+        ]);
+      }
+
+      setIsLoading(true);
+      const { error } = await verifyEmail({
+        email: pendingVerificationEmail,
+        code: verificationCode,
+      });
+
+      if (error) {
+        toast({
+          title: "Erreur de verification",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Email verifie",
+          description: "Votre compte est maintenant actif.",
+        });
+        setPendingVerificationEmail("");
+        setVerificationCode("");
+        navigate("/");
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Erreur de validation",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!pendingVerificationEmail) {
+      toast({
+        title: "Email manquant",
+        description: "Saisissez d'abord un email a verifier.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    const { error, message } = await resendVerificationCode(pendingVerificationEmail);
+
+    if (error) {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Code renvoye",
+        description: message || "Un nouveau code a ete envoye.",
+      });
+    }
+
+    setIsLoading(false);
   };
 
   return (
@@ -212,7 +326,7 @@ const Auth = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="login" className="w-full">
+            <Tabs value={authTab} onValueChange={(value) => setAuthTab(value as "login" | "signup")} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Connexion</TabsTrigger>
                 <TabsTrigger value="signup">Inscription</TabsTrigger>
@@ -323,20 +437,42 @@ const Auth = () => {
                           required
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-specialite-etudiant">Spécialité (optionnel)</Label>
+                        <Input
+                          id="signup-specialite-etudiant"
+                          type="text"
+                          placeholder="IA, Web, Cybersécurité..."
+                          value={signupSpecialite}
+                          onChange={(e) => setSignupSpecialite(e.target.value)}
+                        />
+                      </div>
                     </>
                   )}
                   {signupRole === "enseignant" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-grade">Grade</Label>
-                      <Input
-                        id="signup-grade"
-                        type="text"
-                        placeholder="Maître de conférences"
-                        value={signupGrade}
-                        onChange={(e) => setSignupGrade(e.target.value)}
-                        required
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-grade">Grade</Label>
+                        <Input
+                          id="signup-grade"
+                          type="text"
+                          placeholder="Maître de conférences"
+                          value={signupGrade}
+                          onChange={(e) => setSignupGrade(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-specialite-enseignant">Spécialité (optionnel)</Label>
+                        <Input
+                          id="signup-specialite-enseignant"
+                          type="text"
+                          placeholder="Génie logiciel, Data..."
+                          value={signupSpecialite}
+                          onChange={(e) => setSignupSpecialite(e.target.value)}
+                        />
+                      </div>
+                    </>
                   )}
                   {signupRole === "club" && (
                     <>
@@ -359,6 +495,16 @@ const Auth = () => {
                           placeholder="Innovation, robotique et competitions"
                           value={signupClubDescription}
                           onChange={(e) => setSignupClubDescription(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-club-specialite">Spécialité du club (optionnel)</Label>
+                        <Input
+                          id="signup-club-specialite"
+                          type="text"
+                          placeholder="Robotique, Entrepreneuriat..."
+                          value={signupClubSpecialite}
+                          onChange={(e) => setSignupClubSpecialite(e.target.value)}
                         />
                       </div>
                     </>
@@ -434,6 +580,48 @@ const Auth = () => {
                     )}
                   </Button>
                 </form>
+
+                {pendingVerificationEmail && (
+                  <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 space-y-4">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-foreground">Verification email requise</p>
+                      <p className="text-sm text-muted-foreground">
+                        Un code a ete envoye a {pendingVerificationEmail}. Saisissez-le pour activer votre compte.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleVerifyEmail} className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="verification-code">Code de verification</Label>
+                        <Input
+                          id="verification-code"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={6}
+                          placeholder="123456"
+                          value={verificationCode}
+                          onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button type="submit" variant="hero" className="flex-1" disabled={isLoading}>
+                          {isLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Verification...
+                            </>
+                          ) : (
+                            "Verifier l'email"
+                          )}
+                        </Button>
+                        <Button type="button" variant="outline" className="flex-1" onClick={handleResendCode} disabled={isLoading}>
+                          Renvoyer le code
+                        </Button>
+                      </div>
+                    </form>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>
