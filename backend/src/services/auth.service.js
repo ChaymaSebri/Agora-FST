@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
-const { Utilisateur, Club } = require('../models');
+const { Utilisateur, PendingRegistration, Club, Competence } = require('../models');
 const ApiError = require('../utils/apiError');
 const { isStrongPassword, getPasswordPolicyMessage } = require('../utils/passwordValidator');
 const { EmailDeliveryRejectedError, sendVerificationCodeEmail } = require('./email.service');
@@ -16,24 +17,66 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function normalizeCompetenceIds(competenceIds) {
+  if (!Array.isArray(competenceIds)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      competenceIds
+        .map((competenceId) => String(competenceId || '').trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function assertCompetenceIdsExist(competenceIds) {
+  const normalizedCompetenceIds = normalizeCompetenceIds(competenceIds);
+
+  if (normalizedCompetenceIds.length === 0) {
+    return [];
+  }
+
+  const invalidCompetenceId = normalizedCompetenceIds.find(
+    (competenceId) => !mongoose.Types.ObjectId.isValid(competenceId),
+  );
+
+  if (invalidCompetenceId) {
+    throw new ApiError(400, 'competenceIds contient un ObjectId invalide');
+  }
+
+  const existingCount = await Competence.countDocuments({
+    _id: { $in: normalizedCompetenceIds },
+    isActive: true,
+  });
+
+  if (existingCount !== normalizedCompetenceIds.length) {
+    throw new ApiError(400, 'Certaines competences selectionnees n existent pas');
+  }
+
+  return normalizedCompetenceIds;
+}
+
 function createVerificationCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
-async function updateVerificationCode(userDocument) {
+async function createVerificationCodePair() {
   const verificationCode = createVerificationCode();
   const verificationCodeHash = await bcrypt.hash(verificationCode, SALT_ROUNDS);
 
-  userDocument.emailVerified = false;
-  userDocument.emailVerificationCodeHash = verificationCodeHash;
-  userDocument.emailVerificationCodeExpiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MS);
-  userDocument.emailVerificationRequestedAt = new Date();
-  await userDocument.save();
+  return {
+    verificationCode,
+    verificationCodeHash,
+  };
+}
 
+async function sendVerificationCodeEmailForRecord(record, verificationCode) {
   await sendVerificationCodeEmail({
-    to: userDocument.email,
+    to: record.email,
     code: verificationCode,
-    displayName: [userDocument.prenom, userDocument.nom].filter(Boolean).join(' ').trim(),
+    displayName: [record.prenom, record.nom].filter(Boolean).join(' ').trim(),
   }).catch((error) => {
     if (error instanceof ApiError) {
       throw error;
@@ -45,6 +88,19 @@ async function updateVerificationCode(userDocument) {
 
     throw new ApiError(502, 'Impossible d envoyer le code de verification pour le moment');
   });
+}
+
+async function updateVerificationCode(record) {
+  const { verificationCode, verificationCodeHash } = await createVerificationCodePair();
+
+  record.emailVerificationCodeHash = verificationCodeHash;
+  record.emailVerificationCodeExpiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MS);
+  record.emailVerificationRequestedAt = new Date();
+  await record.save();
+
+  await sendVerificationCodeEmailForRecord(record, verificationCode);
+
+  return verificationCode;
 }
 
 function getJwtSecret() {
@@ -96,7 +152,6 @@ function normalizeRegistrationPayload(payload) {
   normalized.niveau = payload.niveau;
   normalized.filiere = payload.filiere;
   normalized.grade = payload.grade;
-  normalized.specialite = payload.specialite;
   normalized.avatarUrl = String(payload.avatarUrl || payload.avatar_url || '').trim();
   normalized.clubId = payload.clubId;
   normalized.clubName = String(payload.clubName || '').trim();
@@ -147,9 +202,7 @@ function sanitizeUser(userDocument) {
     niveau: userDocument.niveau,
     filiere: userDocument.filiere,
     grade: userDocument.grade,
-    specialite: userDocument.specialite,
     avatar_url: userDocument.avatarUrl || '',
-    emailVerified: Boolean(userDocument.emailVerified),
     clubId: userDocument.clubId,
     competenceIds: userDocument.competenceIds,
     createdAt: userDocument.createdAt,
@@ -173,8 +226,79 @@ function signToken(user) {
   );
 }
 
+function buildPendingRegistrationData(userInput, passwordHash, verificationCodeHash) {
+  return {
+    email: userInput.email,
+    passwordHash,
+    nom: userInput.role === 'club' ? undefined : userInput.nom,
+    prenom: userInput.role === 'club' ? undefined : userInput.prenom,
+    role: userInput.role,
+    niveau: userInput.niveau,
+    filiere: userInput.filiere,
+    grade: userInput.grade,
+    avatarUrl: userInput.avatarUrl || undefined,
+    clubName: userInput.role === 'club' ? userInput.clubName || undefined : undefined,
+    clubDescription: userInput.role === 'club' ? userInput.clubDescription || undefined : undefined,
+    clubSpecialite: userInput.role === 'club' ? userInput.clubSpecialite || undefined : undefined,
+    competenceIds: userInput.competenceIds,
+    emailVerificationCodeHash: verificationCodeHash,
+    emailVerificationCodeExpiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
+    emailVerificationRequestedAt: new Date(),
+  };
+}
+
+async function createVerifiedUserFromPendingRegistration(pendingRegistration) {
+  let createdClub = null;
+
+  if (pendingRegistration.role === 'club') {
+    const existingClub = await Club.findOne({ nom: pendingRegistration.clubName });
+    if (existingClub) {
+      throw new ApiError(409, 'Un club avec ce nom existe deja');
+    }
+
+    createdClub = await Club.create({
+      nom: pendingRegistration.clubName,
+      description: pendingRegistration.clubDescription || undefined,
+      specialite: pendingRegistration.clubSpecialite || undefined,
+    });
+  }
+
+  let createdUser;
+
+  try {
+    createdUser = await Utilisateur.create({
+      nom: pendingRegistration.role === 'club' ? undefined : pendingRegistration.nom,
+      prenom: pendingRegistration.role === 'club' ? undefined : pendingRegistration.prenom,
+      email: pendingRegistration.email,
+      motDePasse: pendingRegistration.passwordHash,
+      role: pendingRegistration.role,
+      niveau: pendingRegistration.niveau,
+      filiere: pendingRegistration.filiere,
+      grade: pendingRegistration.grade,
+      avatarUrl: pendingRegistration.avatarUrl || undefined,
+      clubId: createdClub ? createdClub._id : undefined,
+      competenceIds: pendingRegistration.competenceIds,
+    });
+  } catch (error) {
+    if (createdClub) {
+      await Club.findByIdAndDelete(createdClub._id);
+    }
+
+    throw error;
+  }
+
+  if (createdClub) {
+    await Club.findByIdAndUpdate(createdClub._id, {
+      bureauExecutifId: createdUser._id,
+    });
+  }
+
+  return createdUser;
+}
+
 async function register(payload) {
   const userInput = normalizeRegistrationPayload(payload);
+  userInput.competenceIds = await assertCompetenceIdsExist(userInput.competenceIds);
 
   if (!userInput.email || !userInput.password) {
     throw new ApiError(400, 'email et password sont obligatoires');
@@ -197,65 +321,33 @@ async function register(payload) {
 
   if (userInput.role === 'club') {
     const existingClub = await Club.findOne({ nom: userInput.clubName });
-    if (existingClub) {
+    const pendingClub = await PendingRegistration.findOne({
+      role: 'club',
+      clubName: userInput.clubName,
+      email: { $ne: userInput.email },
+    });
+
+    if (existingClub || pendingClub) {
       throw new ApiError(409, 'Un club avec ce nom existe deja');
     }
-
-    userInput.nom = undefined;
-    userInput.prenom = undefined;
   }
 
   const passwordHash = await bcrypt.hash(userInput.password, SALT_ROUNDS);
 
-  let createdClub = null;
-  if (userInput.role === 'club') {
-    createdClub = await Club.create({
-      nom: userInput.clubName,
-      description: userInput.clubDescription || undefined,
-      specialite: userInput.clubSpecialite || undefined,
-    });
-    userInput.clubId = createdClub._id;
-  }
+  const { verificationCode, verificationCodeHash } = await createVerificationCodePair();
+  const pendingRegistration = await PendingRegistration.findOneAndUpdate(
+    { email: userInput.email },
+    {
+      $set: buildPendingRegistrationData(userInput, passwordHash, verificationCodeHash),
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 
-  let createdUser;
-
-  try {
-    createdUser = await Utilisateur.create({
-      nom: userInput.nom,
-      prenom: userInput.prenom,
-      email: userInput.email,
-      motDePasse: passwordHash,
-      emailVerified: false,
-      role: userInput.role,
-      niveau: userInput.niveau,
-      filiere: userInput.filiere,
-      grade: userInput.grade,
-      specialite: userInput.specialite,
-      avatarUrl: userInput.avatarUrl || undefined,
-      clubId: userInput.clubId,
-      competenceIds: userInput.competenceIds,
-    });
-
-    await updateVerificationCode(createdUser);
-  } catch (error) {
-    if (createdClub) {
-      await Club.findByIdAndDelete(createdClub._id);
-    }
-    if (createdUser) {
-      await Utilisateur.findByIdAndDelete(createdUser._id);
-    }
-    throw error;
-  }
-
-  if (createdClub) {
-    await Club.findByIdAndUpdate(createdClub._id, {
-      bureauExecutifId: createdUser._id,
-    });
-  }
+  await sendVerificationCodeEmailForRecord(pendingRegistration, verificationCode);
 
   return {
     needsVerification: true,
-    email: createdUser.email,
+    email: pendingRegistration.email,
     message: 'Un code de verification a ete envoye a votre adresse email.',
   };
 }
@@ -270,11 +362,12 @@ async function login(payload) {
 
   const user = await Utilisateur.findOne({ email });
   if (!user) {
-    throw new ApiError(401, 'Email ou mot de passe incorrect');
-  }
+    const pendingRegistration = await PendingRegistration.findOne({ email });
+    if (pendingRegistration) {
+      throw new ApiError(403, 'Veuillez verifier votre adresse email avant de vous connecter');
+    }
 
-  if (!user.emailVerified) {
-    throw new ApiError(403, 'Veuillez verifier votre adresse email avant de vous connecter');
+    throw new ApiError(401, 'Email ou mot de passe incorrect');
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.motDePasse);
@@ -296,12 +389,13 @@ async function verifyEmail(payload) {
     throw new ApiError(400, 'email et code sont obligatoires');
   }
 
-  const user = await Utilisateur.findOne({ email });
-  if (!user) {
-    throw new ApiError(404, 'Compte introuvable');
-  }
+  const pendingRegistration = await PendingRegistration.findOne({ email });
+  if (!pendingRegistration) {
+    const user = await Utilisateur.findOne({ email });
+    if (!user) {
+      throw new ApiError(404, 'Compte introuvable');
+    }
 
-  if (user.emailVerified) {
     return {
       token: signToken(user),
       user: sanitizeUser(user),
@@ -309,28 +403,35 @@ async function verifyEmail(payload) {
     };
   }
 
-  if (!user.emailVerificationCodeHash || !user.emailVerificationCodeExpiresAt) {
+  if (!pendingRegistration.emailVerificationCodeHash || !pendingRegistration.emailVerificationCodeExpiresAt) {
     throw new ApiError(400, 'Aucun code de verification actif. Demandez un nouveau code.');
   }
 
-  if (user.emailVerificationCodeExpiresAt.getTime() < Date.now()) {
+  if (pendingRegistration.emailVerificationCodeExpiresAt.getTime() < Date.now()) {
     throw new ApiError(400, 'Le code de verification a expire. Demandez un nouveau code.');
   }
 
-  const isCodeValid = await bcrypt.compare(code, user.emailVerificationCodeHash);
+  const isCodeValid = await bcrypt.compare(code, pendingRegistration.emailVerificationCodeHash);
   if (!isCodeValid) {
     throw new ApiError(400, 'Code de verification invalide');
   }
 
-  user.emailVerified = true;
-  user.emailVerificationCodeHash = undefined;
-  user.emailVerificationCodeExpiresAt = undefined;
-  user.emailVerificationRequestedAt = undefined;
-  await user.save();
+  const existingUser = await Utilisateur.findOne({ email });
+  if (existingUser) {
+    await PendingRegistration.findOneAndDelete({ email });
+    return {
+      token: signToken(existingUser),
+      user: sanitizeUser(existingUser),
+      alreadyVerified: true,
+    };
+  }
+
+  const createdUser = await createVerifiedUserFromPendingRegistration(pendingRegistration);
+  await PendingRegistration.findOneAndDelete({ email });
 
   return {
-    token: signToken(user),
-    user: sanitizeUser(user),
+    token: signToken(createdUser),
+    user: sanitizeUser(createdUser),
   };
 }
 
@@ -341,16 +442,17 @@ async function resendVerificationCode(payload) {
     throw new ApiError(400, 'email est obligatoire');
   }
 
-  const user = await Utilisateur.findOne({ email });
-  if (!user) {
-    throw new ApiError(404, 'Compte introuvable');
-  }
+  const pendingRegistration = await PendingRegistration.findOne({ email });
+  if (!pendingRegistration) {
+    const user = await Utilisateur.findOne({ email });
+    if (!user) {
+      throw new ApiError(404, 'Compte introuvable');
+    }
 
-  if (user.emailVerified) {
     throw new ApiError(400, 'Adresse email deja verifiee');
   }
 
-  await updateVerificationCode(user);
+  await updateVerificationCode(pendingRegistration);
 
   return {
     message: 'Un nouveau code de verification a ete envoye.',

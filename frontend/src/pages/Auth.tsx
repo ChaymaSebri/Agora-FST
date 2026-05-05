@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Loader2, Eye, EyeOff } from "lucide-react";
 import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
+import { fetchCompetences } from "@/services/api";
 import { z } from "zod";
+import logo from "@/assets/logo.png";
 
 const authBaseSchema = z.object({
   email: z.string().email({ message: "Email invalide" }),
@@ -28,7 +30,6 @@ const signupSchema = authBaseSchema.extend({
   niveau: z.string().optional(),
   filiere: z.string().optional(),
   grade: z.string().optional(),
-  specialite: z.string().optional(),
   clubName: z.string().optional(),
   clubDescription: z.string().optional(),
   clubSpecialite: z.string().optional(),
@@ -56,12 +57,13 @@ const Auth = () => {
   const [signupNiveau, setSignupNiveau] = useState("");
   const [signupFiliere, setSignupFiliere] = useState("");
   const [signupGrade, setSignupGrade] = useState("");
-  const [signupSpecialite, setSignupSpecialite] = useState("");
   const [signupClubName, setSignupClubName] = useState("");
   const [signupClubDescription, setSignupClubDescription] = useState("");
   const [signupClubSpecialite, setSignupClubSpecialite] = useState("");
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
+  const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
   
   const { signIn, signUp, verifyEmail, resendVerificationCode, user } = useAuth();
   const navigate = useNavigate();
@@ -79,6 +81,20 @@ const Auth = () => {
       navigate(redirectTo, { replace: true });
     }
   }, [user, navigate, redirectTo]);
+
+  useEffect(() => {
+    const loadCompetences = async () => {
+      try {
+        const items = await fetchCompetences();
+        console.log('Competences loaded:', items);
+        setCompetences(items.map((c) => ({ id: c.id, nom: c.nom })));
+      } catch (error) {
+        console.error('Failed to load competences:', error);
+      }
+    };
+
+    loadCompetences();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +156,6 @@ const Auth = () => {
         niveau: signupNiveau,
         filiere: signupFiliere,
         grade: signupGrade,
-        specialite: signupSpecialite,
         clubName: signupClubName,
         clubDescription: signupClubDescription,
         clubSpecialite: signupClubSpecialite,
@@ -176,13 +191,10 @@ const Auth = () => {
         niveau: signupRole === "etudiant" ? signupNiveau : undefined,
         filiere: signupRole === "etudiant" ? signupFiliere : undefined,
         grade: signupRole === "enseignant" ? signupGrade : undefined,
-        specialite:
-          signupRole === "etudiant" || signupRole === "enseignant"
-            ? signupSpecialite
-            : undefined,
         clubName: signupRole === "club" ? signupClubName : undefined,
         clubDescription: signupRole === "club" ? signupClubDescription : undefined,
         clubSpecialite: signupRole === "club" ? signupClubSpecialite : undefined,
+        competenceIds: signupRole === "etudiant" ? selectedCompetenceIds : undefined,
       });
       
       if (error) {
@@ -310,11 +322,13 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-hero p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-3xl">
         <div className="flex items-center justify-center mb-8">
-          <div className="p-3 bg-gradient-primary rounded-xl">
-            <Rocket className="w-8 h-8 text-primary-foreground" />
-          </div>
+          <img
+            src={logo}
+            alt="Agora FST Logo"
+            className="h-16 w-16 object-contain"
+          />
           <span className="ml-3 text-3xl font-bold text-foreground">Agora FST</span>
         </div>
 
@@ -438,14 +452,23 @@ const Auth = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="signup-specialite-etudiant">Spécialité (optionnel)</Label>
-                        <Input
-                          id="signup-specialite-etudiant"
-                          type="text"
-                          placeholder="IA, Web, Cybersécurité..."
-                          value={signupSpecialite}
-                          onChange={(e) => setSignupSpecialite(e.target.value)}
-                        />
+                        <Label>Compétences (optionnel)</Label>
+                        <p className="text-xs text-muted-foreground">Sélectionnez vos compétences principales.</p>
+                        <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                          {competences.map((c) => (
+                            <label key={c.id} className="inline-flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={selectedCompetenceIds.includes(c.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedCompetenceIds((s) => Array.from(new Set([...s, c.id])));
+                                  else setSelectedCompetenceIds((s) => s.filter((id) => id !== c.id));
+                                }}
+                              />
+                              <span className="truncate">{c.nom}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </>
                   )}
@@ -460,16 +483,6 @@ const Auth = () => {
                           value={signupGrade}
                           onChange={(e) => setSignupGrade(e.target.value)}
                           required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-specialite-enseignant">Spécialité (optionnel)</Label>
-                        <Input
-                          id="signup-specialite-enseignant"
-                          type="text"
-                          placeholder="Génie logiciel, Data..."
-                          value={signupSpecialite}
-                          onChange={(e) => setSignupSpecialite(e.target.value)}
                         />
                       </div>
                     </>

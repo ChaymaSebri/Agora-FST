@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/services/api";
+import { fetchCompetences } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -27,7 +28,6 @@ type ProfileResponse = {
   niveau?: string;
   filiere?: string;
   grade?: string;
-  specialite?: string;
   club_name?: string;
   club_description?: string;
   club_specialite?: string;
@@ -45,11 +45,12 @@ const Profile = () => {
   const [niveau, setNiveau] = useState("");
   const [filiere, setFiliere] = useState("");
   const [grade, setGrade] = useState("");
-  const [specialite, setSpecialite] = useState("");
   const [clubName, setClubName] = useState("");
   const [clubDescription, setClubDescription] = useState("");
   const [clubSpecialite, setClubSpecialite] = useState("");
   const [clubCreationDate, setClubCreationDate] = useState("");
+  const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
+  const [userCompetenceIds, setUserCompetenceIds] = useState<string[]>([]);
 
   const displayRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : user?.role || "—";
 
@@ -75,7 +76,12 @@ const Profile = () => {
         setNiveau(data.niveau ?? "");
         setFiliere(data.filiere ?? "");
         setGrade(data.grade ?? "");
-        setSpecialite(data.specialite ?? "");
+        const competenceIds = Array.isArray((data as any).competenceIds)
+          ? (data as any).competenceIds
+          : Array.isArray(user?.competenceIds)
+            ? user.competenceIds
+            : [];
+        setUserCompetenceIds(competenceIds.map(String));
         setClubName(data.club_name ?? "");
         setClubDescription(data.club_description ?? "");
         setClubSpecialite(data.club_specialite ?? "");
@@ -91,6 +97,15 @@ const Profile = () => {
     };
 
     fetchProfile();
+    const loadCompetences = async () => {
+      try {
+        const items = await fetchCompetences();
+        setCompetences(items.map((c) => ({ id: c.id, nom: c.nom })));
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadCompetences();
   }, [user]);
 
   if (loading) {
@@ -173,8 +188,18 @@ const Profile = () => {
                 <div className="flex items-start gap-3">
                   <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
                   <div>
-                    <div className="text-xs text-muted-foreground">Spécialité</div>
-                    <div className="text-sm text-foreground">{specialite || "—"}</div>
+                    <div className="text-xs text-muted-foreground">Compétences</div>
+                    <div className="text-sm text-foreground flex flex-wrap gap-2">
+                      {userCompetenceIds.length === 0 && <span className="text-muted-foreground">Aucune compétence</span>}
+                      {userCompetenceIds.map((id) => {
+                        const c = competences.find((x) => x.id === id);
+                        return (
+                          <span key={id} className="inline-block bg-muted px-2 py-0.5 rounded text-xs">
+                            {c ? c.nom : id}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </>
@@ -187,13 +212,6 @@ const Profile = () => {
                   <div>
                     <div className="text-xs text-muted-foreground">Grade</div>
                     <div className="text-sm text-foreground">{grade || "—"}</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
-                  <div>
-                    <div className="text-xs text-muted-foreground">Spécialité</div>
-                    <div className="text-sm text-foreground">{specialite || "—"}</div>
                   </div>
                 </div>
               </>

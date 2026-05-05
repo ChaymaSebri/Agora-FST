@@ -10,7 +10,7 @@ jest.mock('../src/services/email.service', () => ({
 
 const { sendVerificationCodeEmail } = require('../src/services/email.service');
 const app = require('../src/app');
-const { Utilisateur, Club } = require('../src/models');
+const { Utilisateur, PendingRegistration, Club, Competence } = require('../src/models');
 
 jest.setTimeout(120000);
 
@@ -38,7 +38,9 @@ beforeEach(async () => {
 
   await Promise.all([
     Utilisateur.deleteMany({}),
+    PendingRegistration.deleteMany({}),
     Club.deleteMany({}),
+    Competence.deleteMany({}),
   ]);
 });
 
@@ -85,6 +87,12 @@ describe('Auth API integration', () => {
     expect(registerResponse.body.email).toContain('@test.com');
     expect(sendVerificationCodeEmail).toHaveBeenCalledTimes(1);
 
+    const pendingRegistration = await PendingRegistration.findOne({ email: registerResponse.body.email });
+    expect(pendingRegistration).toBeTruthy();
+
+    const createdUserBeforeVerify = await Utilisateur.findOne({ email: registerResponse.body.email });
+    expect(createdUserBeforeVerify).toBeNull();
+
     const emailCall = sendVerificationCodeEmail.mock.calls[0][0];
     expect(emailCall.to).toBe(registerResponse.body.email);
     expect(emailCall.code).toMatch(/^\d{6}$/);
@@ -108,7 +116,7 @@ describe('Auth API integration', () => {
 
     expect(verifyResponse.status).toBe(200);
     expect(verifyResponse.body.token).toBeDefined();
-    expect(verifyResponse.body.user.emailVerified).toBe(true);
+    expect(verifyResponse.body.user.id).toBeDefined();
 
     const loginAfterVerify = await request(app)
       .post('/api/auth/login')
@@ -141,5 +149,34 @@ describe('Auth API integration', () => {
     const resentCode = sendVerificationCodeEmail.mock.calls[1][0].code;
     expect(resentCode).toMatch(/^\d{6}$/);
     expect(resentCode).not.toBe(initialCode);
+  });
+
+  test('register persists selected competency references after verification', async () => {
+    const [ai, cloud] = await Competence.create([
+      { nom: 'AI' },
+      { nom: 'Cloud' },
+    ]);
+
+    const registerResponse = await registerStudent({
+      email: `competence_${Date.now()}@test.com`,
+      competenceIds: [ai._id.toString(), cloud._id.toString()],
+    });
+
+    const verificationCode = sendVerificationCodeEmail.mock.calls[0][0].code;
+
+    const verifyResponse = await request(app)
+      .post('/api/auth/verify-email')
+      .send({
+        email: registerResponse.body.email,
+        code: verificationCode,
+      });
+
+    expect(verifyResponse.status).toBe(200);
+
+    const createdUser = await Utilisateur.findOne({ email: registerResponse.body.email });
+    expect(createdUser).toBeTruthy();
+    expect(createdUser.competenceIds.map((competenceId) => competenceId.toString())).toEqual(
+      expect.arrayContaining([ai._id.toString(), cloud._id.toString()])
+    );
   });
 });

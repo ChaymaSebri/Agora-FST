@@ -10,8 +10,8 @@ type AuthUser = {
   nom?: string | null;
   prenom?: string | null;
   role?: string | null;
-  avatar_url?: string | null;
   avatarUrl?: string | null;
+  competenceIds?: string[];
 };
 
 type AuthResult = {
@@ -50,7 +50,9 @@ type AuthContextValue = {
     clubDescription?: string;
     clubSpecialite?: string;
     avatarUrl?: string;
+    competenceIds?: string[];
   }) => Promise<AuthResult>;
+
   verifyEmail: (payload: { email: string; code: string }) => Promise<AuthResult>;
   resendVerificationCode: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
@@ -239,10 +241,10 @@ export function useAuth(): AuthContextValue {
       user: null,
       loading: true,
       isAdmin: false,
-      signIn: async () => ({ error: null }),
-      signUp: async () => ({ error: null }),
-      verifyEmail: async () => ({ error: null }),
-      resendVerificationCode: async () => ({ error: null }),
+      signIn: async (_email?: string, _password?: string) => ({ error: null }),
+      signUp: async (_payload?: any) => ({ error: null }),
+      verifyEmail: async (_p?: any) => ({ error: null }),
+      resendVerificationCode: async (_email?: string) => ({ error: null }),
       signOut: async () => undefined,
       refreshUser: async () => undefined,
     };

@@ -62,6 +62,7 @@ function toUiEvent(item) {
     clubName: item.clubName || null,
     coOrganizerClubIds: Array.isArray(item.coOrganizerClubIds) ? item.coOrganizerClubIds : [],
     coOrganizerClubNames: Array.isArray(item.coOrganizerClubNames) ? item.coOrganizerClubNames : [],
+    competenceIds: Array.isArray(item.competenceIds) ? item.competenceIds : [],
   };
 }
 
@@ -134,6 +135,16 @@ export async function fetchClubs() {
   }
 }
 
+export async function fetchCompetences() {
+  try {
+    const response = await api.get('/competences');
+    const data = extractResponse(response);
+    return (data.items || []).map((c) => ({ id: c.id, nom: c.nom, slug: c.slug }));
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
 export async function createEvent(payload) {
   const body = {
     titre: payload.title,
@@ -143,6 +154,7 @@ export async function createEvent(payload) {
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
     coOrganizerClubIds: payload.coOrganizerClubIds || [],
+    competenceIds: payload.competenceIds || [],
   };
 
   try {
@@ -162,6 +174,7 @@ export async function updateEvent(id, payload) {
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
     coOrganizerClubIds: payload.coOrganizerClubIds || [],
+    competenceIds: payload.competenceIds || [],
   };
 
   try {
