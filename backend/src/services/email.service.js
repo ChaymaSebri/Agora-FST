@@ -89,7 +89,44 @@ async function sendVerificationCodeEmail({ to, code, displayName }) {
   }
 }
 
+async function sendPasswordResetEmail({ to, resetUrl, displayName }) {
+  const transporter = getMailTransporter();
+  const from = String(process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
+
+  if (!from) {
+    throw new Error('SMTP_FROM ou SMTP_USER doit etre configure pour envoyer les emails de reinitialisation');
+  }
+
+  const subject = 'Reinitialisation de votre mot de passe Agora FST';
+  const safeName = displayName || 'utilisateur';
+
+  const sendInfo = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text: `Bonjour ${safeName},\n\nVous avez demande une reinitialisation de mot de passe pour votre compte Agora FST.\n\nOuvrez ce lien pour definir un nouveau mot de passe : ${resetUrl}\n\nCe lien expire dans 15 minutes. Si vous n'etes pas a l'origine de cette demande, ignorez cet email.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
+        <p>Bonjour ${safeName},</p>
+        <p>Vous avez demande une reinitialisation de mot de passe pour votre compte Agora FST.</p>
+        <p>
+          <a href="${resetUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600">
+            Definir un nouveau mot de passe
+          </a>
+        </p>
+        <p>Ce lien expire dans 15 minutes.</p>
+        <p>Si vous n'etes pas a l'origine de cette demande, ignorez cet email.</p>
+      </div>
+    `,
+  });
+
+  if (isRecipientRejected(sendInfo, to)) {
+    throw new EmailDeliveryRejectedError('Adresse email rejetee par le serveur de messagerie');
+  }
+}
+
 module.exports = {
   EmailDeliveryRejectedError,
   sendVerificationCodeEmail,
+  sendPasswordResetEmail,
 };

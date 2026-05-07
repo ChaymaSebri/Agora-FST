@@ -13,6 +13,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor to unwrap successful responses
+api.interceptors.response.use((response) => {
+  // If response.data is in the wrapper format { success: true, data: ... }, unwrap it
+  if (response.data?.success === true && 'data' in response.data) {
+    return {
+      ...response,
+      data: response.data.data,
+    };
+  }
+  return response;
+});
+
 export class ApiError extends Error {
   constructor(message, { status, code, data } = {}) {
     super(message);
@@ -100,8 +112,9 @@ function toApiDate(date, time) {
 }
 
 function extractResponse(response) {
-  if (response?.data?.success) return response.data.data;
-  throw new Error(response?.data?.error?.message || 'Unexpected API response');
+  // Response is already unwrapped by the response interceptor
+  // Just return the data directly
+  return response?.data;
 }
 
 function normalizeApiError(error) {
@@ -194,6 +207,24 @@ export async function fetchClubMembershipRequests() {
 export async function resolveClubMembershipRequest(requestId, action) {
   try {
     const response = await api.patch(`/clubs/membership-requests/${requestId}`, { action });
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function requestPasswordReset(email) {
+  try {
+    const response = await api.post('/auth/request-password-reset', { email });
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function resetPassword(payload) {
+  try {
+    const response = await api.post('/auth/reset-password', payload);
     return extractResponse(response);
   } catch (error) {
     rethrowApiError(error);

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import axios from "axios";
-import api from "@/services/api";
+import api, { requestPasswordReset as requestPasswordResetApi, resetPassword as resetPasswordApi } from "@/services/api";
 
 type AuthUser = {
   id?: string | null;
@@ -56,6 +56,8 @@ type AuthContextValue = {
 
   verifyEmail: (payload: { email: string; code: string }) => Promise<AuthResult>;
   resendVerificationCode: (email: string) => Promise<AuthResult>;
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
+  resetPassword: (payload: { email: string; token: string; newPassword: string }) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -205,6 +207,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: { message } };
         }
       },
+      requestPasswordReset: async (email) => {
+        try {
+          const { message } = await requestPasswordResetApi(email);
+          return { error: null, message };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de l envoi du lien")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de l envoi du lien";
+
+          return { error: { message } };
+        }
+      },
+      resetPassword: async ({ email, token, newPassword }) => {
+        try {
+          const { message } = await resetPasswordApi({ email, token, newPassword });
+          return { error: null, message };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de la reinitialisation")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de la reinitialisation";
+
+          return { error: { message } };
+        }
+      },
       signOut: async () => {
         const token = localStorage.getItem("authToken");
         if (token) {
@@ -246,6 +276,8 @@ export function useAuth(): AuthContextValue {
       signUp: async (_payload?: any) => ({ error: null }),
       verifyEmail: async (_p?: any) => ({ error: null }),
       resendVerificationCode: async (_email?: string) => ({ error: null }),
+      requestPasswordReset: async (_email?: string) => ({ error: null }),
+      resetPassword: async (_payload?: any) => ({ error: null }),
       signOut: async () => undefined,
       refreshUser: async () => undefined,
     };

@@ -3,15 +3,16 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
-const { Utilisateur, PendingRegistration, Club, Competence } = require('../models');
+const { Utilisateur, PendingRegistration, PasswordResetToken, Club, Competence } = require('../models');
 const ApiError = require('../utils/apiError');
 const { isStrongPassword, getPasswordPolicyMessage } = require('../utils/passwordValidator');
-const { EmailDeliveryRejectedError, sendVerificationCodeEmail } = require('./email.service');
+const { EmailDeliveryRejectedError, sendVerificationCodeEmail, sendPasswordResetEmail } = require('./email.service');
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const ROLES = ['etudiant', 'enseignant', 'club'];
 const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -62,6 +63,10 @@ function createVerificationCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
+function createPasswordResetToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 async function createVerificationCodePair() {
   const verificationCode = createVerificationCode();
   const verificationCodeHash = await bcrypt.hash(verificationCode, SALT_ROUNDS);
@@ -101,6 +106,32 @@ async function updateVerificationCode(record) {
   await sendVerificationCodeEmailForRecord(record, verificationCode);
 
   return verificationCode;
+}
+
+async function createPasswordResetTokenRecord(email) {
+  console.log('[DEBUG createPasswordResetTokenRecord] Creating token for email:', email);
+  const token = createPasswordResetToken();
+  const tokenHash = await bcrypt.hash(token, SALT_ROUNDS);
+
+  const deleteResult = await PasswordResetToken.deleteMany({
+    email,
+    $or: [{ usedAt: null }, { usedAt: { $exists: false } }],
+  });
+  console.log('[DEBUG createPasswordResetTokenRecord] Deleted old records:', deleteResult.deletedCount);
+
+  const record = await PasswordResetToken.create({
+    email,
+    tokenHash,
+    expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+    requestedAt: new Date(),
+  });
+  console.log('[DEBUG createPasswordResetTokenRecord] Created record:', record._id, 'email:', record.email);
+
+  // Verify the record was actually saved
+  const verification = await PasswordResetToken.findById(record._id);
+  console.log('[DEBUG createPasswordResetTokenRecord] Verification findById:', !!verification);
+
+  return { token, record };
 }
 
 function getJwtSecret() {
@@ -459,9 +490,102 @@ async function resendVerificationCode(payload) {
   };
 }
 
+async function requestPasswordReset(payload) {
+  const email = normalizeEmail(payload.email);
+
+  if (!email) {
+    throw new ApiError(400, 'email est obligatoire');
+  }
+
+  const user = await Utilisateur.findOne({ email });
+
+  if (user) {
+    const { token } = await createPasswordResetTokenRecord(email);
+    const frontendBaseUrl = String(process.env.FRONTEND_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+    const resetUrl = `${frontendBaseUrl}/auth?mode=reset-password&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+
+    await sendPasswordResetEmail({
+      to: email,
+      resetUrl,
+      displayName: [user.prenom, user.nom].filter(Boolean).join(' ').trim(),
+    });
+  }
+
+  return {
+    message: 'Si un compte existe pour cet email, un lien de reinitialisation a ete envoye.',
+  };
+}
+
+async function resetPassword(payload) {
+  const email = normalizeEmail(payload.email);
+  const token = String(payload.token || '').trim();
+  const newPassword = String(payload.newPassword || payload.password || '').trim();
+
+  if (!email || !token || !newPassword) {
+    throw new ApiError(400, 'email, token et newPassword sont obligatoires');
+  }
+
+  if (!isStrongPassword(newPassword)) {
+    throw new ApiError(400, getPasswordPolicyMessage());
+  }
+
+  console.log('[DEBUG resetPassword] email:', email);
+  console.log('[DEBUG resetPassword] token length:', token.length);
+  console.log('[DEBUG resetPassword] token first 20 chars:', token.substring(0, 20));
+
+  const resetRecord = await PasswordResetToken.findOne({ email, usedAt: null }).sort({ createdAt: -1 });
+
+  console.log('[DEBUG resetPassword] resetRecord found:', !!resetRecord);
+  if (resetRecord) {
+    console.log('[DEBUG resetPassword] resetRecord.email:', resetRecord.email);
+    console.log('[DEBUG resetPassword] resetRecord.expiresAt:', resetRecord.expiresAt);
+    console.log('[DEBUG resetPassword] now:', new Date());
+    console.log('[DEBUG resetPassword] expired?:', resetRecord.expiresAt.getTime() < Date.now());
+  }
+
+  if (!resetRecord) {
+    console.log('[DEBUG resetPassword] ERROR: No reset record found for email:', email);
+    throw new ApiError(400, 'Lien de reinitialisation invalide ou expire');
+  }
+
+  if (resetRecord.expiresAt.getTime() < Date.now()) {
+    console.log('[DEBUG resetPassword] ERROR: Token expired');
+    throw new ApiError(400, 'Lien de reinitialisation invalide ou expire');
+  }
+
+  const isTokenValid = await bcrypt.compare(token, resetRecord.tokenHash);
+  console.log('[DEBUG resetPassword] isTokenValid:', isTokenValid);
+  if (!isTokenValid) {
+    console.log('[DEBUG resetPassword] ERROR: Token hash comparison failed');
+    throw new ApiError(400, 'Lien de reinitialisation invalide ou expire');
+  }
+
+  const user = await Utilisateur.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, 'Compte introuvable');
+  }
+
+  user.motDePasse = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await user.save();
+
+  resetRecord.usedAt = new Date();
+  await resetRecord.save();
+
+  await PasswordResetToken.deleteMany({
+    email,
+    _id: { $ne: resetRecord._id },
+  });
+
+  return {
+    message: 'Mot de passe reinitialise avec succes',
+  };
+}
+
 module.exports = {
   register,
   login,
   verifyEmail,
   resendVerificationCode,
+  requestPasswordReset,
+  resetPassword,
 };
