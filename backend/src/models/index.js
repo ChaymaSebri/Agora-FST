@@ -133,6 +133,44 @@ const clubSchema = new Schema(
   { timestamps: true }
 );
 
+const clubMembershipRequestSchema = new Schema(
+  {
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    memberId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted'],
+      default: 'pending',
+    },
+    requestedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    resolvedAt: {
+      type: Date,
+      default: null,
+    },
+    resolvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
+
+clubMembershipRequestSchema.index({ clubId: 1, memberId: 1 }, { unique: true });
+clubMembershipRequestSchema.index({ clubId: 1, status: 1, requestedAt: -1 });
+clubMembershipRequestSchema.index({ memberId: 1, status: 1, requestedAt: -1 });
+
 const projetSchema = new Schema(
   {
     titre: { type: String, required: true, trim: true },
@@ -249,6 +287,7 @@ const Competence = mongoose.model('Competence', competenceSchema);
 const Utilisateur = mongoose.model('Utilisateur', utilisateurSchema);
 const PendingRegistration = mongoose.model('PendingRegistration', pendingRegistrationSchema);
 const Club = mongoose.model('Club', clubSchema);
+const ClubMembershipRequest = mongoose.model('ClubMembershipRequest', clubMembershipRequestSchema);
 const Projet = mongoose.model('Projet', projetSchema);
 const Tache = mongoose.model('Tache', tacheSchema);
 const Evenement = mongoose.model('Evenement', evenementSchema);
@@ -262,6 +301,7 @@ module.exports = {
   Utilisateur,
   PendingRegistration,
   Club,
+  ClubMembershipRequest,
   Projet,
   Tache,
   Evenement,

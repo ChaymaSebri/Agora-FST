@@ -38,6 +38,33 @@ export function toUiClub(item) {
     description: item.description || '',
     specialite: item.specialite || '',
     statut: item.statut || 'actif',
+    membersCount: Number(item.membersCount || 0),
+  };
+}
+
+function toUiClubMembershipRequest(item) {
+  return {
+    id: item.id,
+    status: item.status || 'pending',
+    requestedAt: item.requestedAt || null,
+    resolvedAt: item.resolvedAt || null,
+    club: item.club
+      ? {
+          id: item.club.id,
+          nom: item.club.nom || '',
+          description: item.club.description || '',
+          specialite: item.club.specialite || '',
+          statut: item.club.statut || 'actif',
+        }
+      : null,
+    member: item.member
+      ? {
+          id: item.member.id,
+          email: item.member.email || '',
+          full_name: item.member.full_name || '',
+          role: item.member.role || '',
+        }
+      : null,
   };
 }
 
@@ -130,6 +157,44 @@ export async function fetchClubs() {
     const response = await api.get('/clubs');
     const data = extractResponse(response);
     return (data.items || []).map(toUiClub);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function requestClubMembership(clubId) {
+  try {
+    const response = await api.post(`/clubs/${clubId}/membership-requests`);
+    return toUiClubMembershipRequest(extractResponse(response));
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchMyClubMembershipRequests() {
+  try {
+    const response = await api.get('/clubs/membership-requests/me');
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiClubMembershipRequest);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchClubMembershipRequests() {
+  try {
+    const response = await api.get('/clubs/membership-requests');
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiClubMembershipRequest);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function resolveClubMembershipRequest(requestId, action) {
+  try {
+    const response = await api.patch(`/clubs/membership-requests/${requestId}`, { action });
+    return extractResponse(response);
   } catch (error) {
     rethrowApiError(error);
   }

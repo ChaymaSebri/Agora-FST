@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Rocket, Menu, Shield, LogOut, User } from "lucide-react";
-import { useState } from "react";
+import { Rocket, Menu, Shield, LogOut, User, Inbox } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import logo from "@/assets/logo.png";
 import {
@@ -17,9 +17,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { fetchClubMembershipRequests } from "@/services/api";
 
 const navItems = [
   { name: "Accueil", path: "/" },
+  { name: "Clubs", path: "/clubs" },
   { name: "Projets", path: "/projects" },
   { name: "Événements", path: "/events" },
   { name: "Statistiques", path: "/stats" },
@@ -28,6 +31,7 @@ const navItems = [
 export const Navbar = () => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [pendingMembershipCount, setPendingMembershipCount] = useState(0);
   const { user, isAdmin, signOut } = useAuth();
   const avatarSrc = user?.avatarUrl || undefined;
   const avatarInitial = user?.email?.charAt(0).toUpperCase() || "U";
@@ -48,6 +52,24 @@ export const Navbar = () => {
   const displayRoleLabel = roleLabel
     ? roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1)
     : "Membre";
+
+  useEffect(() => {
+    const loadPendingRequests = async () => {
+      if (user?.role !== "club") {
+        setPendingMembershipCount(0);
+        return;
+      }
+
+      try {
+        const requests = await fetchClubMembershipRequests();
+        setPendingMembershipCount(requests.length);
+      } catch {
+        setPendingMembershipCount(0);
+      }
+    };
+
+    loadPendingRequests();
+  }, [user]);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
@@ -104,6 +126,20 @@ export const Navbar = () => {
                       Mon profil
                     </Link>
                   </DropdownMenuItem>
+                  {user?.role === "club" && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link to="/club-requests" className="cursor-pointer flex items-center justify-between gap-2">
+                          <span className="flex items-center">
+                            <Inbox className="w-4 h-4 mr-2" />
+                            Demandes de membres
+                          </span>
+                          {pendingMembershipCount > 0 && <Badge variant="secondary">{pendingMembershipCount}</Badge>}
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   {isAdmin && (
                     <>
@@ -155,6 +191,17 @@ export const Navbar = () => {
                 
                 {user ? (
                   <>
+                    {user?.role === "club" && (
+                      <Link
+                        to="/club-requests"
+                        onClick={() => setOpen(false)}
+                        className="text-lg font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+                      >
+                        <Inbox className="w-5 h-5" />
+                        Demandes de membres
+                        {pendingMembershipCount > 0 && <Badge variant="secondary">{pendingMembershipCount}</Badge>}
+                      </Link>
+                    )}
                     <Link
                       to="/profile"
                       onClick={() => setOpen(false)}

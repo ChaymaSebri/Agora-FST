@@ -12,6 +12,7 @@ type AuthUser = {
   role?: string | null;
   avatarUrl?: string | null;
   competenceIds?: string[];
+  clubId?: string | null;
 };
 
 type AuthResult = {

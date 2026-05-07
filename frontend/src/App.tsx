@@ -7,6 +7,8 @@ import Index from "./pages/Index";
 import Events from "./pages/Events";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
+import Clubs from "./pages/Clubs";
+import ClubRequests from "./pages/ClubRequests";
 import CreateEvent from "./pages/CreateEvent";
 import EditEvent from "./pages/EditEvent";
 import Profile from "./pages/Profile";
@@ -38,6 +40,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/clubs" element={<><Navbar /><Clubs /></>} />
               <Route path="/events" element={<><Navbar /><Events /></>} />
               <Route 
                 path="/events/new" 
@@ -92,6 +95,15 @@ const App = () => (
                     <Admin />
                   </ProtectedRoute>
                 } 
+              />
+              <Route
+                path="/club-requests"
+                element={
+                  <ProtectedRoute requireClub>
+                    <Navbar />
+                    <ClubRequests />
+                  </ProtectedRoute>
+                }
               />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

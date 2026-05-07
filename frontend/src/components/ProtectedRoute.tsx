@@ -6,11 +6,13 @@ import { Loader2 } from "lucide-react";
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireClub?: boolean;
 }
 
-export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
+export const ProtectedRoute = ({ children, requireAdmin = false, requireClub = false }: ProtectedRouteProps) => {
   const { user, loading, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const isClub = user?.role === "club";
 
   useEffect(() => {
     if (!loading) {
@@ -18,9 +20,11 @@ export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRout
         navigate("/auth");
       } else if (requireAdmin && !isAdmin) {
         navigate("/");
+      } else if (requireClub && !isClub) {
+        navigate("/");
       }
     }
-  }, [user, loading, isAdmin, requireAdmin, navigate]);
+  }, [user, loading, isAdmin, isClub, requireAdmin, requireClub, navigate]);
 
   if (loading) {
     return (
@@ -30,7 +34,7 @@ export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRout
     );
   }
 
-  if (!user || (requireAdmin && !isAdmin)) {
+  if (!user || (requireAdmin && !isAdmin) || (requireClub && !isClub)) {
     return null;
   }
 

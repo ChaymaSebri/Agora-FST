@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/services/api";
-import { fetchCompetences } from "@/services/api";
+import { fetchCompetences, fetchMyClubMembershipRequests } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -18,6 +19,7 @@ import {
   GraduationCap,
   BadgeInfo,
   CalendarDays,
+  Users,
 } from "lucide-react";
 
 type ProfileResponse = {
@@ -32,6 +34,7 @@ type ProfileResponse = {
   club_description?: string;
   club_specialite?: string;
   club_creation_date?: string;
+  club_member_count?: number;
 };
 
 const Profile = () => {
@@ -49,8 +52,12 @@ const Profile = () => {
   const [clubDescription, setClubDescription] = useState("");
   const [clubSpecialite, setClubSpecialite] = useState("");
   const [clubCreationDate, setClubCreationDate] = useState("");
+  const [clubMemberCount, setClubMemberCount] = useState(0);
   const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
   const [userCompetenceIds, setUserCompetenceIds] = useState<string[]>([]);
+  const [clubMembershipRequests, setClubMembershipRequests] = useState<
+    Array<{ id: string; status: string; club: { id: string; nom: string } | null }>
+  >([]);
 
   const displayRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : user?.role || "—";
 
@@ -86,6 +93,7 @@ const Profile = () => {
         setClubDescription(data.club_description ?? "");
         setClubSpecialite(data.club_specialite ?? "");
         setClubCreationDate(data.club_creation_date ? String(data.club_creation_date).slice(0, 10) : "");
+        setClubMemberCount(Number((data as ProfileResponse & { club_member_count?: number }).club_member_count || 0));
       } catch (error) {
         const message =
           (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -105,7 +113,21 @@ const Profile = () => {
         // ignore
       }
     };
+    const loadClubMembershipRequests = async () => {
+      if (user?.role !== "etudiant") {
+        setClubMembershipRequests([]);
+        return;
+      }
+
+      try {
+        const items = await fetchMyClubMembershipRequests();
+        setClubMembershipRequests(items as Array<{ id: string; status: string; club: { id: string; nom: string } | null }>);
+      } catch {
+        setClubMembershipRequests([]);
+      }
+    };
     loadCompetences();
+    loadClubMembershipRequests();
   }, [user]);
 
   if (loading) {
@@ -116,7 +138,8 @@ const Profile = () => {
     );
   }
 
-  const initial = (fullName || email).charAt(0).toUpperCase();
+  const displayName = role === "club" ? clubName : fullName;
+  const initial = (displayName || email).charAt(0).toUpperCase();
 
   return (
     <div className="container mx-auto px-4 pt-24 pb-12 max-w-2xl">
@@ -133,27 +156,37 @@ const Profile = () => {
         <CardContent className="space-y-6">
           <div className="flex items-center gap-4">
             <Avatar className="w-20 h-20">
-              <AvatarImage src={avatarUrl || undefined} alt={fullName} />
+              <AvatarImage src={avatarUrl || undefined} alt={displayName} />
               <AvatarFallback className="bg-primary text-primary-foreground text-xl">
                 {initial}
               </AvatarFallback>
             </Avatar>
             <div>
               <div className="text-lg font-semibold text-foreground">
-                {fullName || "Sans nom"}
+                {displayName || "Sans nom"}
               </div>
               <div className="text-sm text-muted-foreground">{email}</div>
             </div>
           </div>
 
           <div className="space-y-3 border-t border-border pt-6">
-            <div className="flex items-start gap-3">
-              <UserIcon className="w-4 h-4 mt-1 text-muted-foreground" />
-              <div>
-                <div className="text-xs text-muted-foreground">Nom complet</div>
-                <div className="text-sm text-foreground">{fullName || "—"}</div>
+            {role !== "club" ? (
+              <div className="flex items-start gap-3">
+                <UserIcon className="w-4 h-4 mt-1 text-muted-foreground" />
+                <div>
+                  <div className="text-xs text-muted-foreground">Nom complet</div>
+                  <div className="text-sm text-foreground">{fullName || "—"}</div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                <Building2 className="w-4 h-4 mt-1 text-muted-foreground" />
+                <div>
+                  <div className="text-xs text-muted-foreground">Nom du club</div>
+                  <div className="text-sm text-foreground">{clubName || "—"}</div>
+                </div>
+              </div>
+            )}
             <div className="flex items-start gap-3">
               <Mail className="w-4 h-4 mt-1 text-muted-foreground" />
               <div>
@@ -202,6 +235,40 @@ const Profile = () => {
                     </div>
                   </div>
                 </div>
+
+                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+                  <div className="text-sm font-medium text-foreground">Mes clubs</div>
+                  {clubMembershipRequests.filter((request) => request.status === "accepted").length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Aucune adhésion validée.</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {clubMembershipRequests
+                        .filter((request) => request.status === "accepted")
+                        .map((request) => (
+                          <Badge key={request.id} className="bg-emerald-600 text-white">
+                            {request.club?.nom || "Club"}
+                          </Badge>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+                  <div className="text-sm font-medium text-foreground">Demandes en attente</div>
+                  {clubMembershipRequests.filter((request) => request.status === "pending").length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Aucune demande en attente.</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {clubMembershipRequests
+                        .filter((request) => request.status === "pending")
+                        .map((request) => (
+                          <Badge key={request.id} variant="outline">
+                            {request.club?.nom || "Club"}
+                          </Badge>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -219,13 +286,6 @@ const Profile = () => {
 
             {role === "club" && (
               <>
-                <div className="flex items-start gap-3">
-                  <Building2 className="w-4 h-4 mt-1 text-muted-foreground" />
-                  <div>
-                    <div className="text-xs text-muted-foreground">Nom du club</div>
-                    <div className="text-sm text-foreground">{clubName || "—"}</div>
-                  </div>
-                </div>
                 <div className="flex items-start gap-3">
                   <BadgeInfo className="w-4 h-4 mt-1 text-muted-foreground" />
                   <div>
@@ -245,6 +305,15 @@ const Profile = () => {
                   <div>
                     <div className="text-xs text-muted-foreground">Date de création</div>
                     <div className="text-sm text-foreground">{clubCreationDate || "—"}</div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Users className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Membres</div>
+                    <div className="text-sm text-foreground">
+                      {clubMemberCount} membre{clubMemberCount > 1 ? "s" : ""}
+                    </div>
                   </div>
                 </div>
               </>

@@ -73,6 +73,7 @@ function sanitizeUserProfile(user) {
     profile.club_description = user.clubId?.description || '';
     profile.club_specialite = user.clubId?.specialite || '';
     profile.club_creation_date = user.clubId?.dateCreation || user.clubId?.createdAt || null;
+    profile.club_member_count = Array.isArray(user.clubId?.membreIds) ? user.clubId.membreIds.length : 0;
   }
 
   // include competenceIds for clients to display/edit user competencies
@@ -98,7 +99,7 @@ async function listUsers(req, res) {
 
 async function getMyProfile(req, res, next) {
   try {
-    const user = await Utilisateur.findById(req.user._id).populate('clubId', 'nom description specialite dateCreation createdAt');
+    const user = await Utilisateur.findById(req.user._id).populate('clubId', 'nom description specialite dateCreation createdAt membreIds');
     if (!user) {
       throw new ApiError(404, 'Utilisateur introuvable');
     }
@@ -201,7 +202,7 @@ async function updateMyProfile(req, res, next) {
       }
     }
 
-    const updatedUser = await Utilisateur.findById(user._id).populate('clubId', 'nom description specialite dateCreation createdAt');
+    const updatedUser = await Utilisateur.findById(user._id).populate('clubId', 'nom description specialite dateCreation createdAt membreIds');
 
     return res.status(200).json(sanitizeUserProfile(updatedUser));
   } catch (error) {
