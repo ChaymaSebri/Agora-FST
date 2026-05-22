@@ -63,6 +63,7 @@ const utilisateurSchema = new Schema(
       },
     },
     competenceIds: [{ type: Schema.Types.ObjectId, ref: 'Competence' }],
+    active: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

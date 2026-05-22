@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Rocket, Menu, Shield, LogOut, User } from "lucide-react";
+import { LayoutDashboard, Rocket, Menu, Shield, LogOut, User, Zap, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import logo from "@/assets/logo.png";
@@ -116,6 +116,28 @@ export const Navbar = () => {
                       <DropdownMenuSeparator />
                     </>
                   )}
+                  {user?.role === "club" && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to="/club-dashboard" className="cursor-pointer">
+                          <Zap className="w-4 h-4 mr-2" />
+                          Dashboard Club
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {user?.role === "enseignant" && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to="/teacher-dashboard" className="cursor-pointer">
+                          <BookOpen className="w-4 h-4 mr-2" />
+                          Dashboard Enseignant
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer text-destructive">
                     <LogOut className="w-4 h-4 mr-2" />
                     Déconnexion
@@ -163,16 +185,15 @@ export const Navbar = () => {
                       <User className="w-5 h-5" />
                       Mon profil
                     </Link>
-                    {isAdmin && (
-                      <Link
-                        to="/admin"
-                        onClick={() => setOpen(false)}
-                        className="text-lg font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-                      >
-                        <Shield className="w-5 h-5" />
-                        Dashboard Admin
-                      </Link>
-                    )}
+                          {user?.role === 'admin' && (
+                            <Link 
+                              to="/admin" 
+                              className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            >
+                              <LayoutDashboard size={20} />
+                              <span>Admin Panel</span>
+                            </Link>
+                          )}
                     <Button variant="destructive" className="mt-4" onClick={() => { signOut(); setOpen(false); }}>
                       <LogOut className="w-4 h-4 mr-2" />
                       Déconnexion

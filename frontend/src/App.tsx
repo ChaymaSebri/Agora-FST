@@ -6,12 +6,17 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Events from "./pages/Events";
 import Auth from "./pages/Auth";
-import Admin from "./pages/Admin";
+import AdminPanel from "./pages/AdminPanel";
 import CreateEvent from "./pages/CreateEvent";
 import EditEvent from "./pages/EditEvent";
 import Profile from "./pages/Profile";
 import EditProfile from "./pages/EditProfile";
 import ChangePassword from "./pages/ChangePassword";
+import Projects from "./pages/Projects";
+import CreateProject from "./pages/CreateProject";
+import Stats from "./pages/Stats";
+import { ClubDashboard } from "./pages/ClubDashboard";
+import { TeacherDashboard } from "./pages/TeacherDashboard";
 import { Navbar } from "@/components/Navbar";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -57,6 +62,17 @@ const App = () => (
                   </ProtectedRoute>
                 } 
               />
+              <Route path="/projects" element={<><Navbar /><Projects /></>} />
+              <Route 
+                path="/projects/new" 
+                element={
+                  <ProtectedRoute>
+                    <Navbar />
+                    <CreateProject />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route path="/stats" element={<><Navbar /><Stats /></>} />
               <Route 
                 path="/profile" 
                 element={
@@ -89,7 +105,24 @@ const App = () => (
                 element={
                   <ProtectedRoute requireAdmin>
                     <Navbar />
-                    <Admin />
+                    <AdminPanel />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/club-dashboard" 
+                element={
+                  <ProtectedRoute requireRole="club">
+                    <Navbar />
+                    <ClubDashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/teacher-dashboard" 
+                element={
+                  <ProtectedRoute requireRole="enseignant">
+                    <TeacherDashboard />
                   </ProtectedRoute>
                 } 
               />
