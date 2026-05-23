@@ -402,6 +402,89 @@ const InvitationProjet = mongoose.model(
   invitationProjetSchema
 );
 
+const notificationSchema = new Schema(
+  {
+    utilisateurId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: [
+        'invitation_event',
+        'invitation_project',
+        'invitation_accepted',
+        'invitation_refused',
+        'event_updated',
+        'project_updated',
+        'participation_request',
+        'participation_approved',
+        'participation_rejected',
+      ],
+      required: true,
+    },
+    titre: { type: String, required: true },
+    message: { type: String, required: true },
+    relatedId: {
+      type: Schema.Types.ObjectId,
+      description: 'ID de l\'événement, projet ou invitation concerné',
+    },
+    relatedType: {
+      type: String,
+      enum: ['event', 'project', 'invitation', 'participation'],
+    },
+    lue: { type: Boolean, default: false },
+    dateNotification: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+notificationSchema.index({ utilisateurId: 1, lue: 1 });
+notificationSchema.index({ utilisateurId: 1, dateNotification: -1 });
+
+const projectParticipationRequestSchema = new Schema(
+  {
+    projetId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Projet',
+      required: true,
+    },
+    etudiantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    statut: {
+      type: String,
+      enum: ['en_attente', 'accepte', 'refuse'],
+      default: 'en_attente',
+    },
+    message: { type: String },
+    dateRequete: { type: Date, default: Date.now },
+    dateReponse: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+projectParticipationRequestSchema.index(
+  { projetId: 1, etudiantId: 1 },
+  { unique: true }
+);
+projectParticipationRequestSchema.index({ etudiantId: 1, statut: 1 });
+projectParticipationRequestSchema.index({ clubId: 1, statut: 1 });
+
+const Notification = mongoose.model('Notification', notificationSchema);
+const ProjectParticipationRequest = mongoose.model(
+  'ProjectParticipationRequest',
+  projectParticipationRequestSchema
+);
+
 module.exports = {
   Competence,
   Utilisateur,
@@ -415,4 +498,6 @@ module.exports = {
   ParticipationEvenement,
   InvitationEvenement,
   InvitationProjet,
+  Notification,
+  ProjectParticipationRequest,
 };

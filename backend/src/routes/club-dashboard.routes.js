@@ -61,4 +61,12 @@ router.post('/projects/:projectId/invite-teacher', authenticate, checkRole('club
 router.get('/projects/:projectId/teacher-invitations', authenticate, checkRole('club'), clubDashboardController.getProjectTeacherInvitations);
 router.delete('/projects/:projectId/teacher-invitations/:invitationId', authenticate, checkRole('club'), clubDashboardController.cancelProjectInvitation);
 
+// ============================================================================
+// PROJECT PARTICIPATION REQUESTS (STUDENTS)
+// ============================================================================
+
+router.get('/projects/:projectId/participation-requests', authenticate, checkRole('club'), clubDashboardController.getProjectParticipationRequests);
+router.patch('/projects/:projectId/participation-requests/:requestId/respond', authenticate, checkRole('club'), clubDashboardController.respondToParticipationRequest);
+router.delete('/projects/:projectId/participation-requests/:requestId', authenticate, checkRole('club'), clubDashboardController.cancelParticipationRequest);
+
 module.exports = router;

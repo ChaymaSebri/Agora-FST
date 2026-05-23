@@ -401,6 +401,7 @@ async function inviteTeacherToEvent(req, res, next) {
   try {
     const { eventId } = req.params;
     const { teacherId, message } = req.body;
+    const notificationService = require('../services/notification.service');
 
     if (!teacherId) {
       return next(new ApiError(400, 'L\'ID de l\'enseignant est obligatoire'));
@@ -434,9 +435,19 @@ async function inviteTeacherToEvent(req, res, next) {
     });
 
     if (invitation) {
+      let errorMessage = 'Une invitation a déjà été envoyée à cet enseignant pour cet événement';
+      
+      if (invitation.statut === 'accepte') {
+        errorMessage = 'L\'invitation a déjà été acceptée par cet enseignant';
+      } else if (invitation.statut === 'refuse') {
+        errorMessage = 'L\'invitation a déjà été refusée par cet enseignant';
+      } else if (invitation.statut === 'en_attente') {
+        errorMessage = 'Une invitation est déjà en attente pour cet enseignant';
+      }
+      
       return res.status(400).json({
         success: false,
-        message: 'Une invitation a déjà été envoyée à cet enseignant pour cet événement',
+        message: errorMessage,
       });
     }
 
@@ -450,6 +461,24 @@ async function inviteTeacherToEvent(req, res, next) {
     });
 
     await invitation.save();
+
+    // Créer une notification pour l'enseignant
+    const club = await Club.findById(req.user.clubId);
+    const clubName = club ? club.nom : 'Un club';
+    
+    try {
+      await notificationService.createNotification(
+        teacherId,
+        'invitation_event',
+        'Nouvelle invitation à un événement',
+        `${clubName} vous invite à participer à l'événement "${event.nom}".${message ? ` Message: ${message}` : ''}`,
+        event._id,
+        'event'
+      );
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
+      // Ne pas bloquer la création de l'invitation si la notification échoue
+    }
 
     return res.status(201).json({
       success: true,
@@ -739,6 +768,7 @@ async function inviteTeacherToProject(req, res, next) {
   try {
     const { projectId } = req.params;
     const { teacherId, message } = req.body;
+    const notificationService = require('../services/notification.service');
 
     if (!teacherId) {
       return next(new ApiError(400, 'L\'ID de l\'enseignant est obligatoire'));
@@ -772,9 +802,19 @@ async function inviteTeacherToProject(req, res, next) {
     });
 
     if (invitation) {
+      let errorMessage = 'Une invitation a déjà été envoyée à cet enseignant pour ce projet';
+      
+      if (invitation.statut === 'accepte') {
+        errorMessage = 'L\'invitation a déjà été acceptée par cet enseignant';
+      } else if (invitation.statut === 'refuse') {
+        errorMessage = 'L\'invitation a déjà été refusée par cet enseignant';
+      } else if (invitation.statut === 'en_attente') {
+        errorMessage = 'Une invitation est déjà en attente pour cet enseignant';
+      }
+      
       return res.status(400).json({
         success: false,
-        message: 'Une invitation a déjà été envoyée à cet enseignant pour ce projet',
+        message: errorMessage,
       });
     }
 
@@ -788,6 +828,24 @@ async function inviteTeacherToProject(req, res, next) {
     });
 
     await invitation.save();
+
+    // Créer une notification pour l'enseignant
+    const club = await Club.findById(req.user.clubId);
+    const clubName = club ? club.nom : 'Un club';
+    
+    try {
+      await notificationService.createNotification(
+        teacherId,
+        'invitation_project',
+        'Nouvelle invitation à un projet',
+        `${clubName} vous invite à participer au projet "${project.titre}".${message ? ` Message: ${message}` : ''}`,
+        project._id,
+        'project'
+      );
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
+      // Ne pas bloquer la création de l'invitation si la notification échoue
+    }
 
     return res.status(201).json({
       success: true,
@@ -971,6 +1029,173 @@ async function cancelProjectInvitation(req, res, next) {
   }
 }
 
+// ============================================================================
+// PROJECT PARTICIPATION REQUESTS
+// ============================================================================
+
+async function getProjectParticipationRequests(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    const notificationService = require('../services/notification.service');
+
+    const project = await Projet.findOne({
+      _id: projectId,
+      clubId: req.user.clubId,
+    });
+
+    if (!project) {
+      return next(new ApiError(404, 'Projet non trouvé'));
+    }
+
+    const requests = await require('../models').ProjectParticipationRequest.find({
+      projetId: projectId,
+    })
+      .populate('etudiantId', 'nom prenom email niveau filiere')
+      .sort({ dateRequete: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        requests: requests.map(r => ({
+          id: r._id.toString(),
+          etudiant: {
+            id: r.etudiantId._id.toString(),
+            nom: r.etudiantId.nom,
+            prenom: r.etudiantId.prenom,
+            email: r.etudiantId.email,
+            niveau: r.etudiantId.niveau,
+            filiere: r.etudiantId.filiere,
+          },
+          statut: r.statut,
+          message: r.message,
+          dateRequete: r.dateRequete,
+          dateReponse: r.dateReponse,
+        })),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function respondToParticipationRequest(req, res, next) {
+  try {
+    const { projectId, requestId } = req.params;
+    const { statut } = req.body;
+    const notificationService = require('../services/notification.service');
+
+    if (!['accepte', 'refuse'].includes(statut)) {
+      return next(new ApiError(400, 'Statut invalide. Doit être "accepte" ou "refuse".'));
+    }
+
+    const project = await Projet.findOne({
+      _id: projectId,
+      clubId: req.user.clubId,
+    });
+
+    if (!project) {
+      return next(new ApiError(404, 'Projet non trouvé'));
+    }
+
+    const participationRequest = await require('../models').ProjectParticipationRequest.findOne({
+      _id: requestId,
+      projetId: projectId,
+    })
+      .populate('etudiantId')
+      .populate('clubId');
+
+    if (!participationRequest) {
+      return next(new ApiError(404, 'Demande de participation non trouvée'));
+    }
+
+    if (participationRequest.statut !== 'en_attente') {
+      return next(new ApiError(400, 'Cette demande a déjà été traitée'));
+    }
+
+    // Mettre à jour le statut de la demande
+    participationRequest.statut = statut;
+    participationRequest.dateReponse = new Date();
+    await participationRequest.save();
+
+    // Si acceptée, ajouter l'étudiant au projet
+    if (statut === 'accepte') {
+      if (!project.etudiantIds.includes(participationRequest.etudiantId._id)) {
+        project.etudiantIds.push(participationRequest.etudiantId._id);
+        await project.save();
+      }
+    }
+
+    // Créer une notification pour l'étudiant
+    try {
+      const notificationType = statut === 'accepte' ? 'participation_approved' : 'participation_rejected';
+      const notificationMessage = statut === 'accepte' 
+        ? `Votre demande de participation au projet "${project.titre}" a été acceptée!`
+        : `Votre demande de participation au projet "${project.titre}" a été refusée.`;
+      
+      await notificationService.createNotification(
+        participationRequest.etudiantId._id.toString(),
+        notificationType,
+        `Réponse à votre demande de participation`,
+        notificationMessage,
+        participationRequest._id,
+        'participation'
+      );
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
+      // Ne pas bloquer la réponse si la notification échoue
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Demande de participation ${statut === 'accepte' ? 'acceptée' : 'refusée'}`,
+      data: {
+        id: participationRequest._id.toString(),
+        statut: participationRequest.statut,
+        dateReponse: participationRequest.dateReponse,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function cancelParticipationRequest(req, res, next) {
+  try {
+    const { projectId, requestId } = req.params;
+
+    const project = await Projet.findOne({
+      _id: projectId,
+      clubId: req.user.clubId,
+    });
+
+    if (!project) {
+      return next(new ApiError(404, 'Projet non trouvé'));
+    }
+
+    const participationRequest = await require('../models').ProjectParticipationRequest.findOne({
+      _id: requestId,
+      projetId: projectId,
+    });
+
+    if (!participationRequest) {
+      return next(new ApiError(404, 'Demande de participation non trouvée'));
+    }
+
+    if (participationRequest.statut !== 'en_attente') {
+      return next(new ApiError(400, 'Seules les demandes en attente peuvent être annulées'));
+    }
+
+    await require('../models').ProjectParticipationRequest.deleteOne({ _id: requestId });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Demande de participation annulée',
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   getClubStats,
   getAvailableTeachers,
@@ -995,4 +1220,7 @@ module.exports = {
   inviteTeacherToProject,
   getProjectTeacherInvitations,
   cancelProjectInvitation,
+  getProjectParticipationRequests,
+  respondToParticipationRequest,
+  cancelParticipationRequest,
 };

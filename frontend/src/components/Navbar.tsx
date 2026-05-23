@@ -19,6 +19,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { fetchClubMembershipRequests } from "@/services/api";
+import { ProfileNotificationsMenu } from "@/components/ProfileNotificationsMenu";
 
 const navItems = [
   { name: "Accueil", path: "/" },
@@ -126,6 +127,8 @@ export const Navbar = () => {
                       Mon profil
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <ProfileNotificationsMenu />
                   {user?.role === "club" && (
                     <>
                       <DropdownMenuSeparator />

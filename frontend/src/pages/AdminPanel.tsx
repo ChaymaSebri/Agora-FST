@@ -41,7 +41,7 @@ export default function AdminPage() {
     <div className="flex min-h-screen bg-gray-50">
       <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto pt-20">
         <div className="max-w-7xl mx-auto p-6">
           <div className="w-full">
             {renderContent()}

@@ -63,7 +63,7 @@ const CreateProject = () => {
 
   if (user?.role !== "enseignant") {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 pt-20">
         <p className="text-center text-muted-foreground">
           Seuls les enseignants peuvent créer des projets
         </p>
@@ -72,7 +72,7 @@ const CreateProject = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
+    <div className="container mx-auto px-4 py-8 max-w-2xl pt-20">
       <Button
         variant="ghost"
         onClick={() => navigate("/projects")}
