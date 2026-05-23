@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/services/api";
+import { fetchCompetences } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ type ProfileResponse = {
   filiere?: string;
   grade?: string;
   specialite?: string;
+  competenceIds?: string[];
   club_name?: string;
   club_description?: string;
   club_specialite?: string;
@@ -47,6 +49,8 @@ const EditProfile = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
+  const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
 
   useEffect(() => {
     return () => {
@@ -93,6 +97,12 @@ const EditProfile = () => {
         setFiliere(data.filiere ?? "");
         setGrade(data.grade ?? "");
         setSpecialite(data.specialite ?? "");
+        const competenceIds = Array.isArray(data.competenceIds)
+          ? data.competenceIds
+          : Array.isArray(user?.competenceIds)
+            ? user.competenceIds
+            : [];
+        setSelectedCompetenceIds(competenceIds.map(String));
         setClubName(data.club_name ?? "");
         setClubDescription(data.club_description ?? "");
         setClubSpecialite(data.club_specialite ?? "");
@@ -108,6 +118,15 @@ const EditProfile = () => {
     };
 
     fetchProfile();
+    const loadCompetences = async () => {
+      try {
+        const items = await fetchCompetences();
+        setCompetences(items.map((c) => ({ id: c.id, nom: c.nom })));
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadCompetences();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -155,6 +174,7 @@ const EditProfile = () => {
           filiere: role === "etudiant" ? filiere.trim() : undefined,
           grade: role === "enseignant" ? grade.trim() : undefined,
           specialite: role === "etudiant" || role === "enseignant" || role === "admin" ? specialite.trim() : undefined,
+          competenceIds: role === "etudiant" ? selectedCompetenceIds : undefined,
           club_name: role === "club" ? clubName.trim() : undefined,
           club_description: role === "club" ? clubDescription.trim() : undefined,
           club_specialite: role === "club" ? clubSpecialite.trim() : undefined,
@@ -176,6 +196,7 @@ const EditProfile = () => {
       setFiliere(profile.filiere ?? "");
       setGrade(profile.grade ?? "");
       setSpecialite(profile.specialite ?? "");
+      setSelectedCompetenceIds(Array.isArray((profile as any).competenceIds) ? (profile as any).competenceIds : []);
       setClubName(profile.club_name ?? "");
       setClubDescription(profile.club_description ?? "");
       setClubSpecialite(profile.club_specialite ?? "");
@@ -277,13 +298,23 @@ const EditProfile = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="specialite-etudiant">Spécialité</Label>
-                  <Input
-                    id="specialite-etudiant"
-                    value={specialite}
-                    onChange={(e) => setSpecialite(e.target.value)}
-                    placeholder="IA, Web, Cybersécurité..."
-                  />
+                  <Label>Compétences</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-auto p-2 border rounded">
+                    {competences.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedCompetenceIds.includes(c.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedCompetenceIds((s) => Array.from(new Set([...s, c.id])));
+                            else setSelectedCompetenceIds((s) => s.filter((id) => id !== c.id));
+                          }}
+                        />
+                        <span>{c.nom}</span>
+                      </label>
+                    ))}
+                    {competences.length === 0 && <div className="text-sm text-muted-foreground">Aucune compétence</div>}
+                  </div>
                 </div>
               </>
             )}

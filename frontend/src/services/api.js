@@ -13,6 +13,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor to unwrap successful responses
+api.interceptors.response.use((response) => {
+  // If response.data is in the wrapper format { success: true, data: ... }, unwrap it
+  if (response.data?.success === true && 'data' in response.data) {
+    return {
+      ...response,
+      data: response.data.data,
+    };
+  }
+  return response;
+});
+
 export class ApiError extends Error {
   constructor(message, { status, code, data } = {}) {
     super(message);
@@ -38,6 +50,33 @@ export function toUiClub(item) {
     description: item.description || '',
     specialite: item.specialite || '',
     statut: item.statut || 'actif',
+    membersCount: Number(item.membersCount || 0),
+  };
+}
+
+function toUiClubMembershipRequest(item) {
+  return {
+    id: item.id,
+    status: item.status || 'pending',
+    requestedAt: item.requestedAt || null,
+    resolvedAt: item.resolvedAt || null,
+    club: item.club
+      ? {
+          id: item.club.id,
+          nom: item.club.nom || '',
+          description: item.club.description || '',
+          specialite: item.club.specialite || '',
+          statut: item.club.statut || 'actif',
+        }
+      : null,
+    member: item.member
+      ? {
+          id: item.member.id,
+          email: item.member.email || '',
+          full_name: item.member.full_name || '',
+          role: item.member.role || '',
+        }
+      : null,
   };
 }
 
@@ -62,6 +101,7 @@ function toUiEvent(item) {
     clubName: item.clubName || null,
     coOrganizerClubIds: Array.isArray(item.coOrganizerClubIds) ? item.coOrganizerClubIds : [],
     coOrganizerClubNames: Array.isArray(item.coOrganizerClubNames) ? item.coOrganizerClubNames : [],
+    competenceIds: Array.isArray(item.competenceIds) ? item.competenceIds : [],
   };
 }
 
@@ -72,8 +112,9 @@ function toApiDate(date, time) {
 }
 
 function extractResponse(response) {
-  if (response?.data?.success) return response.data.data;
-  throw new Error(response?.data?.error?.message || 'Unexpected API response');
+  // Response is already unwrapped by the response interceptor
+  // Just return the data directly
+  return response?.data;
 }
 
 function normalizeApiError(error) {
@@ -134,6 +175,72 @@ export async function fetchClubs() {
   }
 }
 
+export async function requestClubMembership(clubId) {
+  try {
+    const response = await api.post(`/clubs/${clubId}/membership-requests`);
+    return toUiClubMembershipRequest(extractResponse(response));
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchMyClubMembershipRequests() {
+  try {
+    const response = await api.get('/clubs/membership-requests/me');
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiClubMembershipRequest);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchClubMembershipRequests() {
+  try {
+    const response = await api.get('/clubs/membership-requests');
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiClubMembershipRequest);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function resolveClubMembershipRequest(requestId, action) {
+  try {
+    const response = await api.patch(`/clubs/membership-requests/${requestId}`, { action });
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function requestPasswordReset(email) {
+  try {
+    const response = await api.post('/auth/request-password-reset', { email });
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function resetPassword(payload) {
+  try {
+    const response = await api.post('/auth/reset-password', payload);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchCompetences() {
+  try {
+    const response = await api.get('/competences');
+    const data = extractResponse(response);
+    return (data.items || []).map((c) => ({ id: c.id, nom: c.nom, slug: c.slug }));
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
 export async function createEvent(payload) {
   const body = {
     titre: payload.title,
@@ -143,6 +250,7 @@ export async function createEvent(payload) {
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
     coOrganizerClubIds: payload.coOrganizerClubIds || [],
+    competenceIds: payload.competenceIds || [],
   };
 
   try {
@@ -162,6 +270,7 @@ export async function updateEvent(id, payload) {
     capacite: Number(payload.maxAttendees),
     type: UI_TO_API_TYPE[payload.type] || 'autre',
     coOrganizerClubIds: payload.coOrganizerClubIds || [],
+    competenceIds: payload.competenceIds || [],
   };
 
   try {

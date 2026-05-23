@@ -4,12 +4,14 @@ const cors = require('cors');
 const routes = require('./routes');
 const notFoundMiddleware = require('./middlewares/notFound.middleware');
 const errorMiddleware = require('./middlewares/error.middleware');
+const responseMiddleware = require('./middlewares/response.middleware');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(responseMiddleware);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Agora FST API' });

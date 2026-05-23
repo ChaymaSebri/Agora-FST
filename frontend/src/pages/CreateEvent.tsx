@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { ApiError, createEvent, fetchClubs } from "@/services/api";
+import { ApiError, createEvent, fetchClubs, fetchCompetences } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const eventSchema = z.object({
@@ -28,6 +28,8 @@ const CreateEvent = () => {
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [clubs, setClubs] = useState<Array<{ id: string; nom: string }>>([]);
   const [coOrganizerClubIds, setCoOrganizerClubIds] = useState<string[]>([]);
+  const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
+  const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
   const [selectedClubToAdd, setSelectedClubToAdd] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -61,6 +63,16 @@ const CreateEvent = () => {
     };
 
     loadClubs();
+    const loadCompetences = async () => {
+      try {
+        const items = await fetchCompetences();
+        setCompetences(items.map((c) => ({ id: c.id, nom: c.nom })));
+      } catch (error) {
+        // swallow; event creation can proceed without competencies
+      }
+    };
+
+    loadCompetences();
   }, [toast]);
 
   const selectableClubs = useMemo(
@@ -116,6 +128,7 @@ const CreateEvent = () => {
         location,
         maxAttendees,
         coOrganizerClubIds,
+        competenceIds: selectedCompetenceIds,
       });
       
       toast({
@@ -327,6 +340,26 @@ const CreateEvent = () => {
                     ))}
                   </div>
                 ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Compétences liées (optionnel)</Label>
+                <p className="text-xs text-muted-foreground">Choisissez les compétences pertinentes pour cet événement.</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {competences.map((c) => (
+                    <label key={c.id} className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedCompetenceIds.includes(c.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedCompetenceIds((s) => Array.from(new Set([...s, c.id])));
+                          else setSelectedCompetenceIds((s) => s.filter((id) => id !== c.id));
+                        }}
+                      />
+                      <span className="truncate">{c.nom}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div className="flex gap-4 pt-4">

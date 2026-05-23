@@ -1,4 +1,4 @@
-const { Evenement, ParticipationEvenement, Utilisateur, Projet } = require('../models');
+const { Evenement, ParticipationEvenement, Utilisateur, Projet, InvitationEvenement, InvitationProjet } = require('../models');
 const ApiError = require('../utils/apiError');
 
 // ============================================================================
@@ -333,6 +333,217 @@ async function getTeacherProjectInvitations(req, res, next) {
   }
 }
 
+// ============================================================================
+// TEACHER EVENT INVITATIONS (NEW - with pending state)
+// ============================================================================
+
+async function getPendingEventInvitations(req, res, next) {
+  try {
+    const teacherId = req.user._id;
+
+    const invitations = await InvitationEvenement.find({
+      enseignantId: teacherId,
+      statut: 'en_attente',
+    })
+      .populate({
+        path: 'evenementId',
+        populate: [
+          { path: 'organisateurId', select: 'nom prenom email' },
+          { path: 'clubId', select: 'nom' },
+        ],
+      })
+      .sort({ dateInvitation: -1 });
+
+    const eventInvitations = invitations.map(inv => ({
+      id: inv._id.toString(),
+      evenementId: inv.evenementId._id.toString(),
+      titre: inv.evenementId.titre,
+      description: inv.evenementId.description,
+      date: inv.evenementId.date,
+      lieu: inv.evenementId.lieu,
+      capacite: inv.evenementId.capacite,
+      type: inv.evenementId.type,
+      clubId: inv.evenementId.clubId._id.toString(),
+      clubName: inv.evenementId.clubId.nom,
+      organisateur: `${inv.evenementId.organisateurId.nom} ${inv.evenementId.organisateurId.prenom}`,
+      message: inv.message,
+      statut: inv.statut,
+      dateInvitation: inv.dateInvitation,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: eventInvitations,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function respondToEventInvitation(req, res, next) {
+  try {
+    const { invitationId } = req.params;
+    const { statut, message } = req.body;
+
+    if (!['accepte', 'refuse'].includes(statut)) {
+      return next(new ApiError(400, 'Statut invalide. Doit être "accepte" ou "refuse".'));
+    }
+
+    const invitation = await InvitationEvenement.findById(invitationId)
+      .populate('evenementId')
+      .populate('clubId');
+
+    if (!invitation) {
+      return next(new ApiError(404, 'Invitation non trouvée'));
+    }
+
+    if (String(invitation.enseignantId) !== String(req.user._id)) {
+      return next(new ApiError(403, 'Non autorisé'));
+    }
+
+    if (invitation.statut !== 'en_attente') {
+      return next(new ApiError(400, 'Cette invitation a déjà été traitée'));
+    }
+
+    // Mettre à jour le statut de l'invitation
+    invitation.statut = statut;
+    invitation.dateReponse = new Date();
+    await invitation.save();
+
+    // Si acceptée, créer une participation à l'événement
+    if (statut === 'accepte') {
+      const participationExists = await ParticipationEvenement.findOne({
+        evenementId: invitation.evenementId._id,
+        utilisateurId: req.user._id,
+      });
+
+      if (!participationExists) {
+        const participation = new ParticipationEvenement({
+          evenementId: invitation.evenementId._id,
+          utilisateurId: req.user._id,
+          statut: 'confirme',
+        });
+        await participation.save();
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Invitation ${statut === 'accepte' ? 'acceptée' : 'refusée'}`,
+      data: {
+        id: invitation._id.toString(),
+        statut: invitation.statut,
+        dateReponse: invitation.dateReponse,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// ============================================================================
+// TEACHER PROJECT INVITATIONS (NEW - with pending state)
+// ============================================================================
+
+async function getPendingProjectInvitations(req, res, next) {
+  try {
+    const teacherId = req.user._id;
+
+    const invitations = await InvitationProjet.find({
+      enseignantId: teacherId,
+      statut: 'en_attente',
+    })
+      .populate({
+        path: 'projetId',
+        populate: [
+          { path: 'clubId', select: 'nom' },
+          { path: 'etudiantIds', select: 'nom prenom email' },
+        ],
+      })
+      .sort({ dateInvitation: -1 });
+
+    const projectInvitations = invitations.map(inv => ({
+      id: inv._id.toString(),
+      projetId: inv.projetId._id.toString(),
+      titre: inv.projetId.titre,
+      description: inv.projetId.description,
+      objectif: inv.projetId.objectif,
+      deadline: inv.projetId.deadline,
+      statut: inv.projetId.statut,
+      progression: inv.projetId.progression,
+      clubId: inv.projetId.clubId._id.toString(),
+      clubName: inv.projetId.clubId.nom,
+      etudiantsCount: inv.projetId.etudiantIds ? inv.projetId.etudiantIds.length : 0,
+      message: inv.message,
+      invitationStatut: inv.statut,
+      dateInvitation: inv.dateInvitation,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: projectInvitations,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function respondToProjectInvitation(req, res, next) {
+  try {
+    const { invitationId } = req.params;
+    const { statut, message } = req.body;
+
+    if (!['accepte', 'refuse'].includes(statut)) {
+      return next(new ApiError(400, 'Statut invalide. Doit être "accepte" ou "refuse".'));
+    }
+
+    const invitation = await InvitationProjet.findById(invitationId)
+      .populate('projetId');
+
+    if (!invitation) {
+      return next(new ApiError(404, 'Invitation non trouvée'));
+    }
+
+    if (String(invitation.enseignantId) !== String(req.user._id)) {
+      return next(new ApiError(403, 'Non autorisé'));
+    }
+
+    if (invitation.statut !== 'en_attente') {
+      return next(new ApiError(400, 'Cette invitation a déjà été traitée'));
+    }
+
+    // Mettre à jour le statut de l'invitation
+    invitation.statut = statut;
+    invitation.dateReponse = new Date();
+    await invitation.save();
+
+    // Si acceptée, mettre à jour le projet
+    if (statut === 'accepte') {
+      const project = await Projet.findById(invitation.projetId._id);
+      if (project && !project.enseignantId) {
+        project.enseignantId = req.user._id;
+        await project.save();
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Invitation ${statut === 'accepte' ? 'acceptée' : 'refusée'}`,
+      data: {
+        id: invitation._id.toString(),
+        statut: invitation.statut,
+        dateReponse: invitation.dateReponse,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   getAllEvents,
   getEventById,
@@ -342,4 +553,7 @@ module.exports = {
   respondToEventInvitation,
   getTeacherProjectEncadrement,
   getTeacherProjectInvitations,
+  getPendingEventInvitations,
+  getPendingProjectInvitations,
+  respondToProjectInvitation,
 };

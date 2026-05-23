@@ -8,9 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Rocket, Loader2, Eye, EyeOff } from "lucide-react";
+import { Rocket, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
+import { fetchCompetences } from "@/services/api";
 import { z } from "zod";
+import logo from "@/assets/logo.png";
 
 const authBaseSchema = z.object({
   email: z.string().email({ message: "Email invalide" }),
@@ -28,7 +30,6 @@ const signupSchema = authBaseSchema.extend({
   niveau: z.string().optional(),
   filiere: z.string().optional(),
   grade: z.string().optional(),
-  specialite: z.string().optional(),
   clubName: z.string().optional(),
   clubDescription: z.string().optional(),
   clubSpecialite: z.string().optional(),
@@ -38,6 +39,20 @@ const signupSchema = authBaseSchema.extend({
 }).refine((data) => isStrongPassword(data.password), {
   message: getPasswordPolicyMessage(),
   path: ["password"],
+}).refine((data) => {
+  if (data.role === "etudiant") {
+    return data.niveau && data.filiere;
+  }
+  if (data.role === "enseignant") {
+    return data.grade;
+  }
+  if (data.role === "club") {
+    return data.clubName;
+  }
+  return true;
+}, {
+  message: "Les champs requis pour ce rôle doivent être remplis",
+  path: ["role"],
 });
 
 const Auth = () => {
@@ -56,14 +71,24 @@ const Auth = () => {
   const [signupNiveau, setSignupNiveau] = useState("");
   const [signupFiliere, setSignupFiliere] = useState("");
   const [signupGrade, setSignupGrade] = useState("");
-  const [signupSpecialite, setSignupSpecialite] = useState("");
   const [signupClubName, setSignupClubName] = useState("");
   const [signupClubDescription, setSignupClubDescription] = useState("");
   const [signupClubSpecialite, setSignupClubSpecialite] = useState("");
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
+  const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [resetModeEmail, setResetModeEmail] = useState("");
+  const [resetModeToken, setResetModeToken] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   
-  const { signIn, signUp, verifyEmail, resendVerificationCode, user } = useAuth();
+  const { signIn, signUp, verifyEmail, resendVerificationCode, requestPasswordReset, resetPassword, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -79,6 +104,34 @@ const Auth = () => {
       navigate(redirectTo, { replace: true });
     }
   }, [user, navigate, redirectTo]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const mode = params.get("mode");
+    const email = params.get("email") || "";
+    const token = params.get("token") || "";
+
+    if (mode === "reset-password" && email && token) {
+      setResetModeEmail(email);
+      setResetModeToken(token);
+      setAuthTab("login");
+      setShowForgotPassword(false);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    const loadCompetences = async () => {
+      try {
+        const items = await fetchCompetences();
+        console.log('Competences loaded:', items);
+        setCompetences(items.map((c) => ({ id: c.id, nom: c.nom })));
+      } catch (error) {
+        console.error('Failed to load competences:', error);
+      }
+    };
+
+    loadCompetences();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +193,6 @@ const Auth = () => {
         niveau: signupNiveau,
         filiere: signupFiliere,
         grade: signupGrade,
-        specialite: signupSpecialite,
         clubName: signupClubName,
         clubDescription: signupClubDescription,
         clubSpecialite: signupClubSpecialite,
@@ -176,13 +228,10 @@ const Auth = () => {
         niveau: signupRole === "etudiant" ? signupNiveau : undefined,
         filiere: signupRole === "etudiant" ? signupFiliere : undefined,
         grade: signupRole === "enseignant" ? signupGrade : undefined,
-        specialite:
-          signupRole === "etudiant" || signupRole === "enseignant"
-            ? signupSpecialite
-            : undefined,
         clubName: signupRole === "club" ? signupClubName : undefined,
         clubDescription: signupRole === "club" ? signupClubDescription : undefined,
         clubSpecialite: signupRole === "club" ? signupClubSpecialite : undefined,
+        competenceIds: signupRole === "etudiant" ? selectedCompetenceIds : undefined,
       });
       
       if (error) {
@@ -246,17 +295,24 @@ const Auth = () => {
       }
 
       setIsLoading(true);
-      const { error } = await verifyEmail({
+      const result = await verifyEmail({
         email: pendingVerificationEmail,
         code: verificationCode,
       });
 
-      if (error) {
+      if (result.error) {
         toast({
           title: "Erreur de verification",
-          description: error.message,
+          description: result.error.message,
           variant: "destructive",
         });
+      } else if (result.needsAdminApproval) {
+        toast({
+          title: "Email verifie",
+          description: "Votre email a été vérifié avec succès. Un administrateur examinera votre inscription et vous notifiera de sa décision.",
+        });
+        setPendingVerificationEmail("");
+        setVerificationCode("");
       } else {
         toast({
           title: "Email verifie",
@@ -308,13 +364,201 @@ const Auth = () => {
     setIsLoading(false);
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const email = forgotPasswordEmail.trim();
+      if (!email) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            message: "Saisissez votre adresse email",
+            path: ["email"],
+          },
+        ]);
+      }
+
+      setIsLoading(true);
+      const { error, message } = await requestPasswordReset(email);
+
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      toast({
+        title: "Lien envoyé",
+        description: message || "Si un compte existe, un lien de réinitialisation a été envoyé.",
+      });
+      setShowForgotPassword(false);
+      setForgotPasswordEmail("");
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast({ title: "Erreur de validation", description: error.errors[0].message, variant: "destructive" });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      if (!resetModeEmail || !resetModeToken) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            message: "Lien de réinitialisation invalide",
+            path: ["token"],
+          },
+        ]);
+      }
+
+      if (resetNewPassword !== resetConfirmPassword) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            message: "Les mots de passe ne correspondent pas",
+            path: ["confirmPassword"],
+          },
+        ]);
+      }
+
+      if (!isStrongPassword(resetNewPassword)) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            message: getPasswordPolicyMessage(),
+            path: ["password"],
+          },
+        ]);
+      }
+
+      setResetPasswordLoading(true);
+      const { error } = await resetPassword({
+        email: resetModeEmail,
+        token: resetModeToken,
+        newPassword: resetNewPassword,
+      });
+
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      toast({
+        title: "Mot de passe réinitialisé",
+        description: "Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.",
+      });
+      setResetModeEmail("");
+      setResetModeToken("");
+      setResetNewPassword("");
+      setResetConfirmPassword("");
+      navigate("/auth", { replace: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast({ title: "Erreur de validation", description: error.errors[0].message, variant: "destructive" });
+      }
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  };
+
+  if (resetModeEmail && resetModeToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-hero p-4">
+        <div className="w-full max-w-xl">
+          <div className="flex items-center justify-center mb-8">
+            <img src={logo} alt="Agora FST Logo" className="h-16 w-16 object-contain" />
+            <span className="ml-3 text-3xl font-bold text-foreground">Agora FST</span>
+          </div>
+
+          <Card className="border-border shadow-elegant">
+            <CardHeader>
+              <CardTitle className="text-2xl text-center text-foreground">Réinitialiser le mot de passe</CardTitle>
+              <CardDescription className="text-center">
+                Définissez un nouveau mot de passe pour {resetModeEmail}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reset-password">Nouveau mot de passe</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="reset-password"
+                      type={showResetPassword ? "text" : "password"}
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Afficher ou masquer le mot de passe"
+                      onClick={() => setShowResetPassword((prev) => !prev)}
+                    >
+                      {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-confirm-password">Confirmer le mot de passe</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="reset-confirm-password"
+                      type={showResetConfirmPassword ? "text" : "password"}
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Afficher ou masquer le mot de passe"
+                      onClick={() => setShowResetConfirmPassword((prev) => !prev)}
+                    >
+                      {showResetConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <Button type="submit" variant="hero" className="w-full" disabled={resetPasswordLoading}>
+                  {resetPasswordLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Réinitialisation...
+                    </>
+                  ) : (
+                    "Réinitialiser le mot de passe"
+                  )}
+                </Button>
+                <Button type="button" variant="ghost" className="w-full" onClick={() => navigate("/auth", { replace: true })}>
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Retour à la connexion
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-hero p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-3xl">
         <div className="flex items-center justify-center mb-8">
-          <div className="p-3 bg-gradient-primary rounded-xl">
-            <Rocket className="w-8 h-8 text-primary-foreground" />
-          </div>
+          <img
+            src={logo}
+            alt="Agora FST Logo"
+            className="h-16 w-16 object-contain"
+          />
           <span className="ml-3 text-3xl font-bold text-foreground">Agora FST</span>
         </div>
 
@@ -382,7 +626,49 @@ const Auth = () => {
                       "Se connecter"
                     )}
                   </Button>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword((prev) => !prev)}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Mot de passe oublié ?
+                    </button>
+                  </div>
                 </form>
+
+                {showForgotPassword && (
+                  <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 space-y-4">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-foreground">Réinitialiser le mot de passe</p>
+                      <p className="text-sm text-muted-foreground">
+                        Entrez votre email et nous vous enverrons un lien de réinitialisation.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleForgotPassword} className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="forgot-password-email">Email</Label>
+                        <Input
+                          id="forgot-password-email"
+                          type="email"
+                          placeholder="votre@email.com"
+                          value={forgotPasswordEmail}
+                          onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="submit" variant="hero" className="flex-1" disabled={isLoading}>
+                          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Envoyer le lien
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => setShowForgotPassword(false)}>
+                          Annuler
+                        </Button>
+                      </div>
+                    </form>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="signup">
@@ -438,14 +724,23 @@ const Auth = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="signup-specialite-etudiant">Spécialité (optionnel)</Label>
-                        <Input
-                          id="signup-specialite-etudiant"
-                          type="text"
-                          placeholder="IA, Web, Cybersécurité..."
-                          value={signupSpecialite}
-                          onChange={(e) => setSignupSpecialite(e.target.value)}
-                        />
+                        <Label>Compétences (optionnel)</Label>
+                        <p className="text-xs text-muted-foreground">Sélectionnez vos compétences principales.</p>
+                        <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                          {competences.map((c) => (
+                            <label key={c.id} className="inline-flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={selectedCompetenceIds.includes(c.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedCompetenceIds((s) => Array.from(new Set([...s, c.id])));
+                                  else setSelectedCompetenceIds((s) => s.filter((id) => id !== c.id));
+                                }}
+                              />
+                              <span className="truncate">{c.nom}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </>
                   )}
@@ -460,16 +755,6 @@ const Auth = () => {
                           value={signupGrade}
                           onChange={(e) => setSignupGrade(e.target.value)}
                           required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-specialite-enseignant">Spécialité (optionnel)</Label>
-                        <Input
-                          id="signup-specialite-enseignant"
-                          type="text"
-                          placeholder="Génie logiciel, Data..."
-                          value={signupSpecialite}
-                          onChange={(e) => setSignupSpecialite(e.target.value)}
                         />
                       </div>
                     </>

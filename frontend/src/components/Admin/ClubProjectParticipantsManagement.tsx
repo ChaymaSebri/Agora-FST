@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import * as clubDashboardApi from '@/services/club-dashboard.api';
+import { TeacherSelect } from '@/components/TeacherSelect';
 
 interface Project {
   id: string;
@@ -238,16 +239,18 @@ export function ClubProjectParticipantsManagement() {
                         <DialogHeader>
                           <DialogTitle>Inviter un encadrant</DialogTitle>
                           <DialogDescription>
-                            Entrez l'ID de l'enseignant à inviter
+                            Sélectionnez un enseignant à inviter à encadrer ce projet
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
-                          <Input
-                            placeholder="ID de l'enseignant"
+                          <TeacherSelect
                             value={teacherId}
-                            onChange={(e) => setTeacherId(e.target.value)}
+                            onValueChange={setTeacherId}
+                            placeholder="Choisir un enseignant..."
                           />
-                          <Button onClick={handleInviteTeacher}>Inviter</Button>
+                          <Button onClick={handleInviteTeacher} className="w-full">
+                            Inviter
+                          </Button>
                         </div>
                       </DialogContent>
                     </Dialog>

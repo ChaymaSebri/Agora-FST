@@ -59,16 +59,13 @@ function sanitizeUserProfile(user) {
   if (user.role === 'etudiant') {
     profile.niveau = user.niveau || '';
     profile.filiere = user.filiere || '';
-    profile.specialite = user.specialite || '';
   }
 
   if (user.role === 'enseignant') {
     profile.grade = user.grade || '';
-    profile.specialite = user.specialite || '';
   }
 
   if (user.role === 'admin') {
-    profile.specialite = user.specialite || '';
   }
 
   if (user.role === 'club') {
@@ -76,7 +73,13 @@ function sanitizeUserProfile(user) {
     profile.club_description = user.clubId?.description || '';
     profile.club_specialite = user.clubId?.specialite || '';
     profile.club_creation_date = user.clubId?.dateCreation || user.clubId?.createdAt || null;
+    profile.club_member_count = Array.isArray(user.clubId?.membreIds) ? user.clubId.membreIds.length : 0;
   }
+
+  // include competenceIds for clients to display/edit user competencies
+  profile.competenceIds = Array.isArray(user.competenceIds)
+    ? user.competenceIds.map((id) => String(id))
+    : [];
 
   return profile;
 }
@@ -96,7 +99,7 @@ async function listUsers(req, res) {
 
 async function getMyProfile(req, res, next) {
   try {
-    const user = await Utilisateur.findById(req.user._id).populate('clubId', 'nom description specialite dateCreation createdAt');
+    const user = await Utilisateur.findById(req.user._id).populate('clubId', 'nom description specialite dateCreation createdAt membreIds');
     if (!user) {
       throw new ApiError(404, 'Utilisateur introuvable');
     }
@@ -121,6 +124,7 @@ async function updateMyProfile(req, res, next) {
     const filiere = ensureOptionalString(req.body.filiere, 'filiere');
     const grade = ensureOptionalString(req.body.grade, 'grade');
     const specialite = ensureOptionalString(req.body.specialite, 'specialite');
+    const competenceIds = req.body.competenceIds;
     const clubName = ensureOptionalString(req.body.club_name, 'club_name');
     const clubDescription = ensureOptionalString(req.body.club_description, 'club_description');
     const clubSpecialite = ensureOptionalString(req.body.club_specialite, 'club_specialite');
@@ -147,6 +151,13 @@ async function updateMyProfile(req, res, next) {
       if (typeof niveau !== 'undefined') setFields.niveau = niveau || undefined;
       if (typeof filiere !== 'undefined') setFields.filiere = filiere || undefined;
       if (typeof specialite !== 'undefined') setFields.specialite = specialite || undefined;
+      if (typeof competenceIds !== 'undefined') {
+        if (!Array.isArray(competenceIds)) {
+          throw new ApiError(400, 'competenceIds doit etre un tableau');
+        }
+        // keep only non-empty values
+        setFields.competenceIds = competenceIds.map((c) => String(c)).filter(Boolean);
+      }
     }
 
     if (user.role === 'enseignant') {
@@ -191,7 +202,7 @@ async function updateMyProfile(req, res, next) {
       }
     }
 
-    const updatedUser = await Utilisateur.findById(user._id).populate('clubId', 'nom description specialite dateCreation createdAt');
+    const updatedUser = await Utilisateur.findById(user._id).populate('clubId', 'nom description specialite dateCreation createdAt membreIds');
 
     return res.status(200).json(sanitizeUserProfile(updatedUser));
   } catch (error) {

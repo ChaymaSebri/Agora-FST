@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Evenement, ParticipationEvenement, Utilisateur, Club } = require('../models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club, Competence } = require('../models');
 
 const EVENT_TYPES = ['conference', 'atelier', 'hackathon', 'sortie', 'autre'];
 const ACTIVE_PARTICIPATION_STATUSES = ['inscrit', 'confirme', 'present'];
@@ -76,6 +76,9 @@ function normalizeEvent(doc, participantsCount = 0) {
     organisateurId: source.organisateurId,
     clubId,
     clubName,
+    competenceIds: Array.isArray(source.competenceIds)
+      ? source.competenceIds.map((competenceId) => (competenceId && competenceId._id ? competenceId._id.toString() : String(competenceId)))
+      : [],
     coOrganizerClubIds,
     coOrganizerClubNames,
     createdAt: source.createdAt,
@@ -153,6 +156,23 @@ function normalizeCoOrganizerClubIds(rawClubIds, ownerClubId) {
     if (!clubId) return;
     const normalized = String(clubId).trim();
     if (!normalized || normalized === ownerId) return;
+    unique.add(normalized);
+  });
+
+  return Array.from(unique);
+}
+
+function normalizeCompetenceIds(rawCompetenceIds) {
+  if (!Array.isArray(rawCompetenceIds)) {
+    return [];
+  }
+
+  const unique = new Set();
+
+  rawCompetenceIds.forEach((competenceId) => {
+    if (!competenceId) return;
+    const normalized = String(competenceId).trim();
+    if (!normalized) return;
     unique.add(normalized);
   });
 
@@ -317,6 +337,17 @@ function validateEventPayload(payload, { partial = false } = {}) {
     }
   }
 
+  if (payload.competenceIds !== undefined) {
+    if (!Array.isArray(payload.competenceIds)) {
+      errors.push('competenceIds must be an array of ObjectId');
+    } else {
+      const invalidCompetenceId = payload.competenceIds.find((competenceId) => !mongoose.Types.ObjectId.isValid(competenceId));
+      if (invalidCompetenceId) {
+        errors.push('competenceIds contains invalid ObjectId');
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -472,6 +503,23 @@ async function createEvent(req, res, next) {
       }
     }
 
+    const competenceIds = normalizeCompetenceIds(payload.competenceIds);
+    if (competenceIds.length > 0) {
+      const existingCompetencesCount = await Competence.countDocuments({
+        _id: { $in: competenceIds },
+        isActive: true,
+      });
+
+      if (existingCompetencesCount !== competenceIds.length) {
+        return sendError(
+          res,
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          'Some competenceIds do not exist',
+        );
+      }
+    }
+
     const created = await Evenement.create({
       titre: payload.titre.trim(),
       description: payload.description,
@@ -482,6 +530,7 @@ async function createEvent(req, res, next) {
       type: payload.type,
       organisateurId: req.user._id,
       clubId: req.user.clubId,
+      competenceIds,
       coOrganizerClubIds,
     });
 
@@ -535,7 +584,7 @@ async function updateEvent(req, res, next) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
 
-    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds'];
+    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds', 'competenceIds'];
     const update = {};
     updatableFields.forEach((field) => {
       if (payload[field] !== undefined) {
@@ -570,6 +619,26 @@ async function updateEvent(req, res, next) {
             400,
             ERROR_CODES.VALIDATION_ERROR,
             'Some coOrganizerClubIds do not exist',
+          );
+        }
+      }
+    }
+
+    if (update.competenceIds !== undefined) {
+      update.competenceIds = normalizeCompetenceIds(update.competenceIds);
+
+      if (update.competenceIds.length > 0) {
+        const existingCompetencesCount = await Competence.countDocuments({
+          _id: { $in: update.competenceIds },
+          isActive: true,
+        });
+
+        if (existingCompetencesCount !== update.competenceIds.length) {
+          return sendError(
+            res,
+            400,
+            ERROR_CODES.VALIDATION_ERROR,
+            'Some competenceIds do not exist',
           );
         }
       }

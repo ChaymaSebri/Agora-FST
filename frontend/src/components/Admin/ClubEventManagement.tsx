@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -19,9 +20,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { ClubEventTeacherInvitations } from './ClubEventTeacherInvitations';
 import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { ChevronDown, ChevronUp, Mail } from 'lucide-react';
 
 interface Event {
   id: string;
@@ -41,6 +44,7 @@ export function ClubEventManagement() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     titre: '',
     description: '',
@@ -273,47 +277,73 @@ export function ClubEventManagement() {
             <p className="text-gray-500">Aucun événement créé</p>
           ) : (
             events.map((event) => (
-              <div
-                key={event.id}
-                className="p-4 border rounded-lg hover:bg-gray-50 transition"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1">
-                    <h3 className="font-semibold">{event.titre}</h3>
-                    <p className="text-sm text-gray-600">{event.description}</p>
+              <Card key={event.id} className="border hover:shadow-md transition">
+                <CardContent className="pt-4">
+                  {/* Event Header */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg">{event.titre}</h3>
+                      <p className="text-sm text-gray-600">{event.description}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(event)}
+                      >
+                        Modifier
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(event.id)}
+                      >
+                        Supprimer
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDialog(event)}
-                    >
-                      Modifier
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(event.id)}
-                    >
-                      Supprimer
-                    </Button>
+
+                  {/* Event Details */}
+                  <div className="text-sm text-gray-600 space-y-1 mb-4">
+                    <p>
+                      📅{' '}
+                      {format(new Date(event.date), 'dd MMMM yyyy HH:mm', {
+                        locale: fr,
+                      })}
+                    </p>
+                    {event.lieu && <p>📍 {event.lieu}</p>}
+                    <p>
+                      👥 {event.participantsCount}
+                      {event.capacite ? `/${event.capacite}` : ''} participants
+                    </p>
+                    <p>🏷️ {event.type}</p>
                   </div>
-                </div>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>
-                    📅{' '}
-                    {format(new Date(event.date), 'dd MMMM yyyy HH:mm', {
-                      locale: fr,
-                    })}
-                  </p>
-                  {event.lieu && <p>📍 {event.lieu}</p>}
-                  <p>
-                    👥 {event.participantsCount}
-                    {event.capacite ? `/${event.capacite}` : ''} participants
-                  </p>
-                  <p>🏷️ {event.type}</p>
-                </div>
-              </div>
+
+                  {/* Invitations Toggle */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
+                    className="w-full justify-between mb-3"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Mail size={16} />
+                      Invitations Enseignants
+                    </span>
+                    {expandedEventId === event.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </Button>
+
+                  {/* Invitations Section */}
+                  {expandedEventId === event.id && (
+                    <div className="border-t pt-4 mt-4">
+                      <ClubEventTeacherInvitations 
+                        eventId={event.id} 
+                        onInvitationStatusChange={() => loadEvents()}
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             ))
           )}
         </div>

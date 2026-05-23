@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -19,9 +20,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { ClubProjectTeacherInvitations } from './ClubProjectTeacherInvitations';
 import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { ChevronDown, ChevronUp, Mail } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -49,6 +52,7 @@ export function ClubProjectManagement() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     titre: '',
     description: '',
@@ -326,74 +330,100 @@ export function ClubProjectManagement() {
             <p className="text-gray-500">Aucun projet créé</p>
           ) : (
             projects.map((project) => (
-              <div
-                key={project.id}
-                className="p-4 border rounded-lg hover:bg-gray-50 transition"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{project.titre}</h3>
-                    <p className="text-sm text-gray-600">{project.description}</p>
+              <Card key={project.id} className="border hover:shadow-md transition">
+                <CardContent className="pt-4">
+                  {/* Project Header */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg">{project.titre}</h3>
+                      <p className="text-sm text-gray-600">{project.description}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(project)}
+                      >
+                        Modifier
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(project.id)}
+                      >
+                        Supprimer
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDialog(project)}
-                    >
-                      Modifier
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(project.id)}
-                    >
-                      Supprimer
-                    </Button>
-                  </div>
-                </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Progression</span>
-                    <span className="font-medium">{project.progression}%</span>
+                  {/* Progress Bar */}
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Progression</span>
+                      <span className="font-medium">{project.progression}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${getProgressionColor(
+                          project.progression
+                        )}`}
+                        style={{ width: `${project.progression}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${getProgressionColor(
-                        project.progression
-                      )}`}
-                      style={{ width: `${project.progression}%` }}
-                    />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
-                  <div>
-                    <p className="text-gray-600">Statut</p>
-                    <p className="font-medium">{getStatutLabel(project.statut)}</p>
+                  {/* Project Details */}
+                  <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                    <div>
+                      <p className="text-gray-600">Statut</p>
+                      <p className="font-medium">{getStatutLabel(project.statut)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Encadrant</p>
+                      <p className="font-medium">{project.enseignant}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-gray-600">Encadrant</p>
-                    <p className="font-medium">{project.enseignant}</p>
+
+                  <div className="mb-3 text-sm">
+                    <p className="text-gray-600">Deadline</p>
+                    <p className="font-medium">
+                      {format(new Date(project.deadline), 'dd MMMM yyyy', {
+                        locale: fr,
+                      })}
+                    </p>
                   </div>
-                </div>
 
-                <div className="mt-3 text-sm">
-                  <p className="text-gray-600">Deadline</p>
-                  <p className="font-medium">
-                    {format(new Date(project.deadline), 'dd MMMM yyyy', {
-                      locale: fr,
-                    })}
-                  </p>
-                </div>
+                  <div className="mb-3 p-2 bg-blue-50 rounded">
+                    <p className="text-sm font-medium text-blue-900">
+                      👥 {project.etudiantsCount} participants
+                    </p>
+                  </div>
 
-                <div className="mt-3 p-2 bg-blue-50 rounded">
-                  <p className="text-sm font-medium text-blue-900">
-                    👥 {project.etudiantsCount} participants
-                  </p>
-                </div>
-              </div>
+                  {/* Invitations Toggle */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                    className="w-full justify-between mb-3"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Mail size={16} />
+                      Invitations Enseignants
+                    </span>
+                    {expandedProjectId === project.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </Button>
+
+                  {/* Invitations Section */}
+                  {expandedProjectId === project.id && (
+                    <div className="border-t pt-4">
+                      <ClubProjectTeacherInvitations 
+                        projectId={project.id} 
+                        onInvitationStatusChange={() => loadProjects()}
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             ))
           )}
         </div>

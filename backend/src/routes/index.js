@@ -6,6 +6,7 @@ router.use('/clubs', require('./clubs.routes'));
 router.use('/club-dashboard', require('./club-dashboard.routes'));
 router.use('/teacher-dashboard', require('./teacher-dashboard.routes'));
 router.use('/projets', require('./projects.routes'));
+router.use('/competences', require('./competences.routes'));
 router.use('/events', require('./events.routes'));
 router.use('/stats', require('./stats.routes'));
 router.use('/admin', require('./admin.routes'));

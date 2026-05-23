@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { ApiError, fetchClubs, fetchEventById, updateEvent } from "@/services/api";
+import { ApiError, fetchClubs, fetchEventById, updateEvent, fetchCompetences } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const eventSchema = z.object({
@@ -70,7 +70,6 @@ const EditEvent = () => {
       }
 
       try {
-        setIsLoadingEvent(true);
         setLoadError(null);
         const event = await fetchEventById(id);
         setTitle(event.title);
@@ -81,6 +80,7 @@ const EditEvent = () => {
         setLocation(event.location);
         setMaxAttendees(String(event.maxAttendees || 0));
         setCoOrganizerClubIds(Array.isArray(event.coOrganizerClubIds) ? event.coOrganizerClubIds : []);
+        setSelectedCompetenceIds(Array.isArray(event.competenceIds) ? event.competenceIds : []);
       } catch (error) {
         const message = error instanceof ApiError ? error.message : "Événement introuvable.";
         setLoadError(message);
@@ -93,11 +93,26 @@ const EditEvent = () => {
     loadEvent();
   }, [id, navigate, toast]);
 
+  useEffect(() => {
+    const loadCompetences = async () => {
+      try {
+        const items = await fetchCompetences();
+        setCompetences(items.map((c) => ({ id: c.id, nom: c.nom })));
+      } catch {
+        // ignore
+      }
+    };
+
+    loadCompetences();
+  }, []);
+
   const selectableClubs = useMemo(
     () => clubs.filter((club) => club.id !== currentClubId),
     [clubs, currentClubId],
   );
 
+  const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
+  const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
   const selectedCoOrganizerClubs = useMemo(
     () => selectableClubs.filter((club) => coOrganizerClubIds.includes(club.id)),
     [selectableClubs, coOrganizerClubIds],
@@ -143,6 +158,7 @@ const EditEvent = () => {
         location,
         maxAttendees,
         coOrganizerClubIds,
+        competenceIds: selectedCompetenceIds,
       });
 
       toast({ title: "Événement modifié", description: "L'événement a été mis à jour avec succès !" });
@@ -198,11 +214,10 @@ const EditEvent = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="title">Titre de l'événement *</Label>
-                <Input id="title" placeholder="Ex: Atelier Intelligence Artificielle" value={title} onChange={(e) => setTitle(e.target.value)} required />
-              </div>
-
-              <div className="space-y-2">
+                      <Label htmlFor="title">Titre de l'événement *</Label>
+                      <Input id="title" placeholder="Ex: Atelier Intelligence Artificielle" value={title} onChange={(e) => setTitle(e.target.value)} required />
+                    </div>
+                    <div className="space-y-2">
                 <Label htmlFor="description">Description *</Label>
                 <Textarea id="description" placeholder="Décrivez votre événement..." value={description} onChange={(e) => setDescription(e.target.value)} required rows={5} />
                 <p className="text-xs text-muted-foreground">{description.length}/500 caractères</p>
@@ -294,6 +309,26 @@ const EditEvent = () => {
                     ))}
                   </div>
                 ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Compétences liées (optionnel)</Label>
+                <p className="text-xs text-muted-foreground">Choisissez les compétences pertinentes pour cet événement.</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {competences.map((c) => (
+                    <label key={c.id} className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedCompetenceIds.includes(c.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedCompetenceIds((s) => Array.from(new Set([...s, c.id])));
+                          else setSelectedCompetenceIds((s) => s.filter((id) => id !== c.id));
+                        }}
+                      />
+                      <span className="truncate">{c.nom}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div className="flex gap-4 pt-4">

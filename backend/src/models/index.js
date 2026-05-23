@@ -1,12 +1,34 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+function slugifyCompetenceName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 const competenceSchema = new Schema(
   {
     nom: { type: String, required: true, trim: true },
+    slug: { type: String, required: true, trim: true, lowercase: true },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
+
+competenceSchema.pre('validate', function setCompetenceSlug(next) {
+  if (this.nom) {
+    this.slug = slugifyCompetenceName(this.nom);
+  }
+
+  next();
+});
+
+competenceSchema.index({ slug: 1 }, { unique: true });
 
 const utilisateurSchema = new Schema(
   {
@@ -26,10 +48,6 @@ const utilisateurSchema = new Schema(
     },
     email: { type: String, required: true, unique: true, lowercase: true },
     motDePasse: { type: String, required: true },
-    emailVerified: { type: Boolean, default: true },
-    emailVerificationCodeHash: { type: String },
-    emailVerificationCodeExpiresAt: { type: Date },
-    emailVerificationRequestedAt: { type: Date },
     role: {
       type: String,
       enum: ['etudiant', 'enseignant', 'club', 'admin'],
@@ -54,7 +72,6 @@ const utilisateurSchema = new Schema(
       },
     },
     avatarUrl: { type: String, trim: true },
-    specialite: { type: String },
     clubId: {
       type: Schema.Types.ObjectId,
       ref: 'Club',
@@ -67,6 +84,57 @@ const utilisateurSchema = new Schema(
   },
   { timestamps: true }
 );
+
+utilisateurSchema.index({ competenceIds: 1 });
+
+const pendingRegistrationSchema = new Schema(
+  {
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+
+    passwordHash: { type: String, required: true },
+    nom: { type: String, trim: true },
+    prenom: { type: String, trim: true },
+    role: {
+      type: String,
+      enum: ['etudiant', 'enseignant', 'club'],
+      required: true,
+    },
+    niveau: { type: String },
+    filiere: { type: String },
+    grade: { type: String },
+    avatarUrl: { type: String, trim: true },
+    clubName: { type: String, trim: true },
+    clubDescription: { type: String },
+    clubSpecialite: { type: String },
+    competenceIds: [{ type: Schema.Types.ObjectId, ref: 'Competence' }],
+    emailVerificationCodeHash: { type: String, required: true },
+    emailVerificationCodeExpiresAt: { type: Date, required: true },
+    emailVerificationRequestedAt: { type: Date, required: true },
+    status: {
+      type: String,
+      enum: ['pending', 'verified', 'approved', 'rejected'],
+      default: 'pending',
+    },
+    approvalNotes: { type: String },
+    approvedAt: { type: Date },
+    rejectedAt: { type: Date },
+  },
+  { timestamps: true }
+);
+
+const passwordResetTokenSchema = new Schema(
+  {
+    email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    tokenHash: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    requestedAt: { type: Date, default: Date.now },
+    usedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+passwordResetTokenSchema.index({ email: 1, createdAt: -1 });
+passwordResetTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const clubSchema = new Schema(
   {
@@ -88,6 +156,44 @@ const clubSchema = new Schema(
   { timestamps: true }
 );
 
+const clubMembershipRequestSchema = new Schema(
+  {
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    memberId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted'],
+      default: 'pending',
+    },
+    requestedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    resolvedAt: {
+      type: Date,
+      default: null,
+    },
+    resolvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
+
+clubMembershipRequestSchema.index({ clubId: 1, memberId: 1 }, { unique: true });
+clubMembershipRequestSchema.index({ clubId: 1, status: 1, requestedAt: -1 });
+clubMembershipRequestSchema.index({ memberId: 1, status: 1, requestedAt: -1 });
+
 const projetSchema = new Schema(
   {
     titre: { type: String, required: true, trim: true },
@@ -108,9 +214,12 @@ const projetSchema = new Schema(
     },
     etudiantIds: [{ type: Schema.Types.ObjectId, ref: 'Utilisateur' }],
     clubId: { type: Schema.Types.ObjectId, ref: 'Club' },
+    competenceIds: [{ type: Schema.Types.ObjectId, ref: 'Competence' }],
   },
   { timestamps: true }
 );
+
+projetSchema.index({ competenceIds: 1 });
 
 const tacheSchema = new Schema(
   {
@@ -155,6 +264,7 @@ const evenementSchema = new Schema(
       ref: 'Club',
       required: true,
     },
+    competenceIds: [{ type: Schema.Types.ObjectId, ref: 'Competence' }],
     coOrganizerClubIds: [{
       type: Schema.Types.ObjectId,
       ref: 'Club',
@@ -165,6 +275,7 @@ const evenementSchema = new Schema(
 
 evenementSchema.index({ clubId: 1, date: -1 });
 evenementSchema.index({ coOrganizerClubIds: 1, date: -1 });
+evenementSchema.index({ competenceIds: 1, date: -1 });
 evenementSchema.index({ date: -1 });
 
 const participationEvenementSchema = new Schema(
@@ -195,9 +306,84 @@ participationEvenementSchema.index(
   { unique: true }
 );
 
+const invitationEvenementSchema = new Schema(
+  {
+    evenementId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Evenement',
+      required: true,
+    },
+    enseignantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    statut: {
+      type: String,
+      enum: ['en_attente', 'accepte', 'refuse'],
+      default: 'en_attente',
+    },
+    dateInvitation: { type: Date, default: Date.now },
+    dateReponse: { type: Date, default: null },
+    message: { type: String },
+  },
+  { timestamps: true }
+);
+
+invitationEvenementSchema.index(
+  { evenementId: 1, enseignantId: 1 },
+  { unique: true }
+);
+invitationEvenementSchema.index({ enseignantId: 1, statut: 1 });
+invitationEvenementSchema.index({ clubId: 1, statut: 1 });
+
+const invitationProjetSchema = new Schema(
+  {
+    projetId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Projet',
+      required: true,
+    },
+    enseignantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    statut: {
+      type: String,
+      enum: ['en_attente', 'accepte', 'refuse'],
+      default: 'en_attente',
+    },
+    dateInvitation: { type: Date, default: Date.now },
+    dateReponse: { type: Date, default: null },
+    message: { type: String },
+  },
+  { timestamps: true }
+);
+
+invitationProjetSchema.index(
+  { projetId: 1, enseignantId: 1 },
+  { unique: true }
+);
+invitationProjetSchema.index({ enseignantId: 1, statut: 1 });
+invitationProjetSchema.index({ clubId: 1, statut: 1 });
+
 const Competence = mongoose.model('Competence', competenceSchema);
 const Utilisateur = mongoose.model('Utilisateur', utilisateurSchema);
+const PendingRegistration = mongoose.model('PendingRegistration', pendingRegistrationSchema);
+const PasswordResetToken = mongoose.model('PasswordResetToken', passwordResetTokenSchema);
 const Club = mongoose.model('Club', clubSchema);
+const ClubMembershipRequest = mongoose.model('ClubMembershipRequest', clubMembershipRequestSchema);
 const Projet = mongoose.model('Projet', projetSchema);
 const Tache = mongoose.model('Tache', tacheSchema);
 const Evenement = mongoose.model('Evenement', evenementSchema);
@@ -206,12 +392,27 @@ const ParticipationEvenement = mongoose.model(
   participationEvenementSchema
 );
 
+const InvitationEvenement = mongoose.model(
+  'InvitationEvenement',
+  invitationEvenementSchema
+);
+
+const InvitationProjet = mongoose.model(
+  'InvitationProjet',
+  invitationProjetSchema
+);
+
 module.exports = {
   Competence,
   Utilisateur,
+  PendingRegistration,
+  PasswordResetToken,
   Club,
+  ClubMembershipRequest,
   Projet,
   Tache,
   Evenement,
   ParticipationEvenement,
+  InvitationEvenement,
+  InvitationProjet,
 };

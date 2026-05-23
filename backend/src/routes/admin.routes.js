@@ -16,6 +16,9 @@ router.use(isAdmin);
 // GET /api/admin/dashboard/stats - Obtenir les statistiques du dashboard
 router.get('/dashboard/stats', adminController.getDashboardStats);
 
+// GET /api/admin/debug/db-status - Vérifier la base MongoDB et les inscriptions en attente
+router.get('/debug/db-status', adminController.getDatabaseDebugInfo);
+
 /**
  * =====================
  * USER MANAGEMENT ROUTES
@@ -36,6 +39,21 @@ router.put('/users/:id/disable', adminController.disableUser);
 
 // PUT /api/admin/users/:id/enable - Réactiver un compte utilisateur
 router.put('/users/:id/enable', adminController.enableUser);
+
+/**
+ * =====================
+ * PENDING REGISTRATIONS ROUTES
+ * =====================
+ */
+
+// GET /api/admin/pending-registrations - Obtenir toutes les inscriptions en attente
+router.get('/pending-registrations', adminController.getPendingRegistrations);
+
+// POST /api/admin/pending-registrations/:id/approve - Approuver une inscription
+router.post('/pending-registrations/:id/approve', adminController.approvePendingRegistration);
+
+// POST /api/admin/pending-registrations/:id/reject - Rejeter une inscription
+router.post('/pending-registrations/:id/reject', adminController.rejectPendingRegistration);
 
 /**
  * =====================

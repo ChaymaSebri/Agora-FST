@@ -1,39 +1,125 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
-const { Utilisateur, Club } = require('../models');
+const { Utilisateur, PendingRegistration, PasswordResetToken, Club, Competence } = require('../models');
 const ApiError = require('../utils/apiError');
 const { isStrongPassword, getPasswordPolicyMessage } = require('../utils/passwordValidator');
-const { EmailDeliveryRejectedError, sendVerificationCodeEmail } = require('./email.service');
+const { EmailDeliveryRejectedError, sendVerificationCodeEmail, sendPasswordResetEmail } = require('./email.service');
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const ROLES = ['etudiant', 'enseignant', 'club'];
 const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function normalizePendingRole(role) {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+
+  if (normalizedRole === 'enseigant') {
+    return 'enseignant';
+  }
+
+  return normalizedRole;
+}
+
+function deriveNamePartsFromEmail(email) {
+  const localPart = String(email || '').split('@')[0] || '';
+  const chunks = localPart
+    .replace(/[._-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (chunks.length >= 2) {
+    return {
+      prenom: chunks[0],
+      nom: chunks.slice(1).join(' '),
+    };
+  }
+
+  if (chunks.length === 1) {
+    return {
+      prenom: chunks[0],
+      nom: chunks[0],
+    };
+  }
+
+  return {
+    prenom: 'Utilisateur',
+    nom: 'Pending',
+  };
+}
+
+function normalizeCompetenceIds(competenceIds) {
+  if (!Array.isArray(competenceIds)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      competenceIds
+        .map((competenceId) => String(competenceId || '').trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function assertCompetenceIdsExist(competenceIds) {
+  const normalizedCompetenceIds = normalizeCompetenceIds(competenceIds);
+
+  if (normalizedCompetenceIds.length === 0) {
+    return [];
+  }
+
+  const invalidCompetenceId = normalizedCompetenceIds.find(
+    (competenceId) => !mongoose.Types.ObjectId.isValid(competenceId),
+  );
+
+  if (invalidCompetenceId) {
+    throw new ApiError(400, 'competenceIds contient un ObjectId invalide');
+  }
+
+  const existingCount = await Competence.countDocuments({
+    _id: { $in: normalizedCompetenceIds },
+    isActive: true,
+  });
+
+  if (existingCount !== normalizedCompetenceIds.length) {
+    throw new ApiError(400, 'Certaines competences selectionnees n existent pas');
+  }
+
+  return normalizedCompetenceIds;
 }
 
 function createVerificationCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
-async function updateVerificationCode(userDocument) {
+function createPasswordResetToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+async function createVerificationCodePair() {
   const verificationCode = createVerificationCode();
   const verificationCodeHash = await bcrypt.hash(verificationCode, SALT_ROUNDS);
 
-  userDocument.emailVerified = false;
-  userDocument.emailVerificationCodeHash = verificationCodeHash;
-  userDocument.emailVerificationCodeExpiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MS);
-  userDocument.emailVerificationRequestedAt = new Date();
-  await userDocument.save();
+  return {
+    verificationCode,
+    verificationCodeHash,
+  };
+}
 
+async function sendVerificationCodeEmailForRecord(record, verificationCode) {
   await sendVerificationCodeEmail({
-    to: userDocument.email,
+    to: record.email,
     code: verificationCode,
-    displayName: [userDocument.prenom, userDocument.nom].filter(Boolean).join(' ').trim(),
+    displayName: [record.prenom, record.nom].filter(Boolean).join(' ').trim(),
   }).catch((error) => {
     if (error instanceof ApiError) {
       throw error;
@@ -45,6 +131,45 @@ async function updateVerificationCode(userDocument) {
 
     throw new ApiError(502, 'Impossible d envoyer le code de verification pour le moment');
   });
+}
+
+async function updateVerificationCode(record) {
+  const { verificationCode, verificationCodeHash } = await createVerificationCodePair();
+
+  record.emailVerificationCodeHash = verificationCodeHash;
+  record.emailVerificationCodeExpiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MS);
+  record.emailVerificationRequestedAt = new Date();
+  await record.save();
+
+  await sendVerificationCodeEmailForRecord(record, verificationCode);
+
+  return verificationCode;
+}
+
+async function createPasswordResetTokenRecord(email) {
+  console.log('[DEBUG createPasswordResetTokenRecord] Creating token for email:', email);
+  const token = createPasswordResetToken();
+  const tokenHash = await bcrypt.hash(token, SALT_ROUNDS);
+
+  const deleteResult = await PasswordResetToken.deleteMany({
+    email,
+    $or: [{ usedAt: null }, { usedAt: { $exists: false } }],
+  });
+  console.log('[DEBUG createPasswordResetTokenRecord] Deleted old records:', deleteResult.deletedCount);
+
+  const record = await PasswordResetToken.create({
+    email,
+    tokenHash,
+    expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+    requestedAt: new Date(),
+  });
+  console.log('[DEBUG createPasswordResetTokenRecord] Created record:', record._id, 'email:', record.email);
+
+  // Verify the record was actually saved
+  const verification = await PasswordResetToken.findById(record._id);
+  console.log('[DEBUG createPasswordResetTokenRecord] Verification findById:', !!verification);
+
+  return { token, record };
 }
 
 function getJwtSecret() {
@@ -95,8 +220,7 @@ function normalizeRegistrationPayload(payload) {
   normalized.prenom = String(normalized.prenom || '').trim();
   normalized.niveau = payload.niveau;
   normalized.filiere = payload.filiere;
-  normalized.grade = payload.grade;
-  normalized.specialite = payload.specialite;
+  normalized.grade = String(payload.grade || '').trim();
   normalized.avatarUrl = String(payload.avatarUrl || payload.avatar_url || '').trim();
   normalized.clubId = payload.clubId;
   normalized.clubName = String(payload.clubName || '').trim();
@@ -147,9 +271,7 @@ function sanitizeUser(userDocument) {
     niveau: userDocument.niveau,
     filiere: userDocument.filiere,
     grade: userDocument.grade,
-    specialite: userDocument.specialite,
     avatar_url: userDocument.avatarUrl || '',
-    emailVerified: Boolean(userDocument.emailVerified),
     clubId: userDocument.clubId,
     competenceIds: userDocument.competenceIds,
     createdAt: userDocument.createdAt,
@@ -173,8 +295,93 @@ function signToken(user) {
   );
 }
 
+function buildPendingRegistrationData(userInput, passwordHash, verificationCodeHash) {
+  return {
+    email: userInput.email,
+    passwordHash,
+    nom: userInput.role === 'club' ? undefined : userInput.nom,
+    prenom: userInput.role === 'club' ? undefined : userInput.prenom,
+    role: userInput.role,
+    niveau: userInput.niveau,
+    filiere: userInput.filiere,
+    grade: userInput.grade,
+    avatarUrl: userInput.avatarUrl || undefined,
+    clubName: userInput.role === 'club' ? userInput.clubName || undefined : undefined,
+    clubDescription: userInput.role === 'club' ? userInput.clubDescription || undefined : undefined,
+    clubSpecialite: userInput.role === 'club' ? userInput.clubSpecialite || undefined : undefined,
+    competenceIds: userInput.competenceIds,
+    emailVerificationCodeHash: verificationCodeHash,
+    emailVerificationCodeExpiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
+    emailVerificationRequestedAt: new Date(),
+  };
+}
+
+async function createVerifiedUserFromPendingRegistration(pendingRegistration) {
+  let createdClub = null;
+  const normalizedRole = normalizePendingRole(pendingRegistration.role);
+  const fallbackNames = deriveNamePartsFromEmail(pendingRegistration.email);
+  const nom = String(pendingRegistration.nom || '').trim() || fallbackNames.nom;
+  const prenom = String(pendingRegistration.prenom || '').trim() || fallbackNames.prenom;
+  const grade = String(pendingRegistration.grade || '').trim()
+    || (normalizedRole === 'enseignant' ? 'Non precise' : undefined);
+
+  if (normalizedRole === 'club') {
+    const existingClub = await Club.findOne({ nom: pendingRegistration.clubName });
+    if (existingClub) {
+      throw new ApiError(409, 'Un club avec ce nom existe deja');
+    }
+
+    createdClub = await Club.create({
+      nom: pendingRegistration.clubName,
+      description: pendingRegistration.clubDescription || undefined,
+      specialite: pendingRegistration.clubSpecialite || undefined,
+    });
+  }
+
+  let createdUser;
+
+  try {
+    createdUser = await Utilisateur.create({
+      nom: normalizedRole === 'club' ? undefined : nom,
+      prenom: normalizedRole === 'club' ? undefined : prenom,
+      email: pendingRegistration.email,
+      motDePasse: pendingRegistration.passwordHash,
+      role: normalizedRole,
+      niveau: pendingRegistration.niveau,
+      filiere: pendingRegistration.filiere,
+      grade,
+      avatarUrl: pendingRegistration.avatarUrl || undefined,
+      clubId: createdClub ? createdClub._id : undefined,
+      competenceIds: pendingRegistration.competenceIds,
+    });
+  } catch (error) {
+    if (createdClub) {
+      await Club.findByIdAndDelete(createdClub._id);
+    }
+
+    if (error?.code === 11000) {
+      throw new ApiError(409, 'Un compte avec cet email existe deja');
+    }
+
+    if (error?.name === 'ValidationError') {
+      throw new ApiError(400, error.message);
+    }
+
+    throw error;
+  }
+
+  if (createdClub) {
+    await Club.findByIdAndUpdate(createdClub._id, {
+      bureauExecutifId: createdUser._id,
+    });
+  }
+
+  return createdUser;
+}
+
 async function register(payload) {
   const userInput = normalizeRegistrationPayload(payload);
+  userInput.competenceIds = await assertCompetenceIdsExist(userInput.competenceIds);
 
   if (!userInput.email || !userInput.password) {
     throw new ApiError(400, 'email et password sont obligatoires');
@@ -197,65 +404,33 @@ async function register(payload) {
 
   if (userInput.role === 'club') {
     const existingClub = await Club.findOne({ nom: userInput.clubName });
-    if (existingClub) {
+    const pendingClub = await PendingRegistration.findOne({
+      role: 'club',
+      clubName: userInput.clubName,
+      email: { $ne: userInput.email },
+    });
+
+    if (existingClub || pendingClub) {
       throw new ApiError(409, 'Un club avec ce nom existe deja');
     }
-
-    userInput.nom = undefined;
-    userInput.prenom = undefined;
   }
 
   const passwordHash = await bcrypt.hash(userInput.password, SALT_ROUNDS);
 
-  let createdClub = null;
-  if (userInput.role === 'club') {
-    createdClub = await Club.create({
-      nom: userInput.clubName,
-      description: userInput.clubDescription || undefined,
-      specialite: userInput.clubSpecialite || undefined,
-    });
-    userInput.clubId = createdClub._id;
-  }
+  const { verificationCode, verificationCodeHash } = await createVerificationCodePair();
+  const pendingRegistration = await PendingRegistration.findOneAndUpdate(
+    { email: userInput.email },
+    {
+      $set: buildPendingRegistrationData(userInput, passwordHash, verificationCodeHash),
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 
-  let createdUser;
-
-  try {
-    createdUser = await Utilisateur.create({
-      nom: userInput.nom,
-      prenom: userInput.prenom,
-      email: userInput.email,
-      motDePasse: passwordHash,
-      emailVerified: false,
-      role: userInput.role,
-      niveau: userInput.niveau,
-      filiere: userInput.filiere,
-      grade: userInput.grade,
-      specialite: userInput.specialite,
-      avatarUrl: userInput.avatarUrl || undefined,
-      clubId: userInput.clubId,
-      competenceIds: userInput.competenceIds,
-    });
-
-    await updateVerificationCode(createdUser);
-  } catch (error) {
-    if (createdClub) {
-      await Club.findByIdAndDelete(createdClub._id);
-    }
-    if (createdUser) {
-      await Utilisateur.findByIdAndDelete(createdUser._id);
-    }
-    throw error;
-  }
-
-  if (createdClub) {
-    await Club.findByIdAndUpdate(createdClub._id, {
-      bureauExecutifId: createdUser._id,
-    });
-  }
+  await sendVerificationCodeEmailForRecord(pendingRegistration, verificationCode);
 
   return {
     needsVerification: true,
-    email: createdUser.email,
+    email: pendingRegistration.email,
     message: 'Un code de verification a ete envoye a votre adresse email.',
   };
 }
@@ -270,11 +445,12 @@ async function login(payload) {
 
   const user = await Utilisateur.findOne({ email });
   if (!user) {
-    throw new ApiError(401, 'Email ou mot de passe incorrect');
-  }
+    const pendingRegistration = await PendingRegistration.findOne({ email });
+    if (pendingRegistration) {
+      throw new ApiError(403, 'Veuillez verifier votre adresse email avant de vous connecter');
+    }
 
-  if (!user.emailVerified) {
-    throw new ApiError(403, 'Veuillez verifier votre adresse email avant de vous connecter');
+    throw new ApiError(401, 'Email ou mot de passe incorrect');
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.motDePasse);
@@ -296,12 +472,13 @@ async function verifyEmail(payload) {
     throw new ApiError(400, 'email et code sont obligatoires');
   }
 
-  const user = await Utilisateur.findOne({ email });
-  if (!user) {
-    throw new ApiError(404, 'Compte introuvable');
-  }
+  const pendingRegistration = await PendingRegistration.findOne({ email });
+  if (!pendingRegistration) {
+    const user = await Utilisateur.findOne({ email });
+    if (!user) {
+      throw new ApiError(404, 'Compte introuvable');
+    }
 
-  if (user.emailVerified) {
     return {
       token: signToken(user),
       user: sanitizeUser(user),
@@ -309,28 +486,50 @@ async function verifyEmail(payload) {
     };
   }
 
-  if (!user.emailVerificationCodeHash || !user.emailVerificationCodeExpiresAt) {
+  if (!pendingRegistration.emailVerificationCodeHash || !pendingRegistration.emailVerificationCodeExpiresAt) {
     throw new ApiError(400, 'Aucun code de verification actif. Demandez un nouveau code.');
   }
 
-  if (user.emailVerificationCodeExpiresAt.getTime() < Date.now()) {
+  if (pendingRegistration.emailVerificationCodeExpiresAt.getTime() < Date.now()) {
     throw new ApiError(400, 'Le code de verification a expire. Demandez un nouveau code.');
   }
 
-  const isCodeValid = await bcrypt.compare(code, user.emailVerificationCodeHash);
+  const isCodeValid = await bcrypt.compare(code, pendingRegistration.emailVerificationCodeHash);
   if (!isCodeValid) {
     throw new ApiError(400, 'Code de verification invalide');
   }
 
-  user.emailVerified = true;
-  user.emailVerificationCodeHash = undefined;
-  user.emailVerificationCodeExpiresAt = undefined;
-  user.emailVerificationRequestedAt = undefined;
-  await user.save();
+  const existingUser = await Utilisateur.findOne({ email });
+  if (existingUser) {
+    await PendingRegistration.findOneAndDelete({ email });
+    return {
+      token: signToken(existingUser),
+      user: sanitizeUser(existingUser),
+      alreadyVerified: true,
+    };
+  }
 
+  // Mark as verified and check if approval is needed
+  pendingRegistration.status = 'verified';
+  await pendingRegistration.save();
+
+  // For etudiant, auto-approve and create account
+  if (pendingRegistration.role === 'etudiant') {
+    const createdUser = await createVerifiedUserFromPendingRegistration(pendingRegistration);
+    await PendingRegistration.findOneAndDelete({ email });
+
+    return {
+      token: signToken(createdUser),
+      user: sanitizeUser(createdUser),
+    };
+  }
+
+  // For enseignant and club, wait for admin approval
   return {
-    token: signToken(user),
-    user: sanitizeUser(user),
+    needsAdminApproval: true,
+    email: pendingRegistration.email,
+    role: pendingRegistration.role,
+    message: 'Votre adresse email a ete verifiee. Un administrateur examinera votre inscription et vous notifiera de sa decision.',
   };
 }
 
@@ -341,20 +540,233 @@ async function resendVerificationCode(payload) {
     throw new ApiError(400, 'email est obligatoire');
   }
 
+  const pendingRegistration = await PendingRegistration.findOne({ email });
+  if (!pendingRegistration) {
+    const user = await Utilisateur.findOne({ email });
+    if (!user) {
+      throw new ApiError(404, 'Compte introuvable');
+    }
+
+    throw new ApiError(400, 'Adresse email deja verifiee');
+  }
+
+  await updateVerificationCode(pendingRegistration);
+
+  return {
+    message: 'Un nouveau code de verification a ete envoye.',
+  };
+}
+
+async function requestPasswordReset(payload) {
+  const email = normalizeEmail(payload.email);
+
+  if (!email) {
+    throw new ApiError(400, 'email est obligatoire');
+  }
+
+  const user = await Utilisateur.findOne({ email });
+
+  if (user) {
+    const { token } = await createPasswordResetTokenRecord(email);
+    const frontendBaseUrl = String(process.env.FRONTEND_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+    const resetUrl = `${frontendBaseUrl}/auth?mode=reset-password&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+
+    await sendPasswordResetEmail({
+      to: email,
+      resetUrl,
+      displayName: [user.prenom, user.nom].filter(Boolean).join(' ').trim(),
+    });
+  }
+
+  return {
+    message: 'Si un compte existe pour cet email, un lien de reinitialisation a ete envoye.',
+  };
+}
+
+async function resetPassword(payload) {
+  const email = normalizeEmail(payload.email);
+  const token = String(payload.token || '').trim();
+  const newPassword = String(payload.newPassword || payload.password || '').trim();
+
+  if (!email || !token || !newPassword) {
+    throw new ApiError(400, 'email, token et newPassword sont obligatoires');
+  }
+
+  if (!isStrongPassword(newPassword)) {
+    throw new ApiError(400, getPasswordPolicyMessage());
+  }
+
+  console.log('[DEBUG resetPassword] email:', email);
+  console.log('[DEBUG resetPassword] token length:', token.length);
+  console.log('[DEBUG resetPassword] token first 20 chars:', token.substring(0, 20));
+
+  const resetRecord = await PasswordResetToken.findOne({ email, usedAt: null }).sort({ createdAt: -1 });
+
+  console.log('[DEBUG resetPassword] resetRecord found:', !!resetRecord);
+  if (resetRecord) {
+    console.log('[DEBUG resetPassword] resetRecord.email:', resetRecord.email);
+    console.log('[DEBUG resetPassword] resetRecord.expiresAt:', resetRecord.expiresAt);
+    console.log('[DEBUG resetPassword] now:', new Date());
+    console.log('[DEBUG resetPassword] expired?:', resetRecord.expiresAt.getTime() < Date.now());
+  }
+
+  if (!resetRecord) {
+    console.log('[DEBUG resetPassword] ERROR: No reset record found for email:', email);
+    throw new ApiError(400, 'Lien de reinitialisation invalide ou expire');
+  }
+
+  if (resetRecord.expiresAt.getTime() < Date.now()) {
+    console.log('[DEBUG resetPassword] ERROR: Token expired');
+    throw new ApiError(400, 'Lien de reinitialisation invalide ou expire');
+  }
+
+  const isTokenValid = await bcrypt.compare(token, resetRecord.tokenHash);
+  console.log('[DEBUG resetPassword] isTokenValid:', isTokenValid);
+  if (!isTokenValid) {
+    console.log('[DEBUG resetPassword] ERROR: Token hash comparison failed');
+    throw new ApiError(400, 'Lien de reinitialisation invalide ou expire');
+  }
+
   const user = await Utilisateur.findOne({ email });
   if (!user) {
     throw new ApiError(404, 'Compte introuvable');
   }
 
-  if (user.emailVerified) {
-    throw new ApiError(400, 'Adresse email deja verifiee');
-  }
+  user.motDePasse = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await user.save();
 
-  await updateVerificationCode(user);
+  resetRecord.usedAt = new Date();
+  await resetRecord.save();
+
+  await PasswordResetToken.deleteMany({
+    email,
+    _id: { $ne: resetRecord._id },
+  });
 
   return {
-    message: 'Un nouveau code de verification a ete envoye.',
+    message: 'Mot de passe reinitialise avec succes',
   };
+}
+
+async function approvePendingRegistration(registrationId) {
+  const pendingRegistration = await PendingRegistration.findById(registrationId);
+  if (!pendingRegistration) {
+    throw new ApiError(404, 'Inscription en attente non trouvee');
+  }
+
+  pendingRegistration.role = normalizePendingRole(pendingRegistration.role);
+
+  if (pendingRegistration.status === 'approved') {
+    throw new ApiError(400, 'Cette inscription a deja ete approuvee');
+  }
+
+  if (pendingRegistration.status === 'rejected') {
+    throw new ApiError(400, 'Cette inscription a ete rejetee');
+  }
+
+  let createdUser;
+  try {
+    createdUser = await createVerifiedUserFromPendingRegistration(pendingRegistration);
+  } catch (error) {
+    console.error('[approvePendingRegistration] Failed to create verified user:', error);
+    throw error;
+  }
+
+  pendingRegistration.status = 'approved';
+  pendingRegistration.approvedAt = new Date();
+  try {
+    await pendingRegistration.save();
+  } catch (error) {
+    console.error('[approvePendingRegistration] Failed to persist approved status:', error);
+
+    if (error?.name === 'ValidationError') {
+      throw new ApiError(400, error.message);
+    }
+
+    throw error;
+  }
+
+  return {
+    message: 'Inscription approuvee avec succes',
+    user: sanitizeUser(createdUser),
+  };
+}
+
+async function rejectPendingRegistration(registrationId, notes) {
+  const pendingRegistration = await PendingRegistration.findById(registrationId);
+  if (!pendingRegistration) {
+    throw new ApiError(404, 'Inscription en attente non trouvee');
+  }
+
+  pendingRegistration.role = normalizePendingRole(pendingRegistration.role);
+
+  if (pendingRegistration.status === 'approved') {
+    throw new ApiError(400, 'Cette inscription a deja ete approuvee');
+  }
+
+  if (pendingRegistration.status === 'rejected') {
+    throw new ApiError(400, 'Cette inscription a deja ete rejetee');
+  }
+
+  pendingRegistration.status = 'rejected';
+  pendingRegistration.rejectedAt = new Date();
+  pendingRegistration.approvalNotes = notes;
+  try {
+    await pendingRegistration.save();
+  } catch (error) {
+    console.error('[rejectPendingRegistration] Failed to persist rejected status:', error);
+
+    if (error?.name === 'ValidationError') {
+      throw new ApiError(400, error.message);
+    }
+
+    throw error;
+  }
+
+  return {
+    message: 'Inscription rejetee',
+    email: pendingRegistration.email,
+  };
+}
+
+async function getPendingRegistrations(filters = {}) {
+  const baseQuery = {
+    role: { $in: ['enseignant', 'club', 'enseigant'] },
+    status: { $in: ['pending', 'verified'] },
+  };
+
+  const normalizedRole = String(filters.role || '').trim().toLowerCase();
+  const normalizedStatus = String(filters.status || '').trim().toLowerCase();
+
+  if (normalizedRole && normalizedRole !== 'all') {
+    baseQuery.role = normalizedRole === 'enseignant'
+      ? { $in: ['enseignant', 'enseigant'] }
+      : normalizedRole;
+  }
+
+  if (normalizedStatus && normalizedStatus !== 'all') {
+    baseQuery.status = normalizedStatus;
+  }
+
+  const registrations = await PendingRegistration.find(baseQuery).sort({
+    createdAt: -1,
+    emailVerificationRequestedAt: -1,
+  });
+
+  return registrations.map((reg) => ({
+    id: reg._id,
+    email: reg.email,
+    role: normalizePendingRole(reg.role),
+    status: reg.status,
+    nom: reg.nom,
+    prenom: reg.prenom,
+    clubName: reg.clubName,
+    clubDescription: reg.clubDescription,
+    clubSpecialite: reg.clubSpecialite,
+    grade: reg.grade,
+    createdAt: reg.createdAt || reg.emailVerificationRequestedAt,
+    emailVerifiedAt: reg.status !== 'pending' ? reg.emailVerificationRequestedAt : null,
+  }));
 }
 
 module.exports = {
@@ -362,4 +774,9 @@ module.exports = {
   login,
   verifyEmail,
   resendVerificationCode,
+  requestPasswordReset,
+  resetPassword,
+  approvePendingRegistration,
+  rejectPendingRegistration,
+  getPendingRegistrations,
 };

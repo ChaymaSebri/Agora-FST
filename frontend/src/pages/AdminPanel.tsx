@@ -2,6 +2,7 @@ import { useState } from 'react';
 import AdminSidebar from '../components/Admin/AdminSidebar';
 import AdminDashboard from '../components/Admin/AdminDashboard';
 import UserManagement from '../components/Admin/UserManagement';
+import PendingRegistrationsManagement from '../components/Admin/PendingRegistrationsManagement';
 import ProjectManagement from '../components/Admin/ProjectManagement';
 import EventManagement from '../components/Admin/EventManagement';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +26,8 @@ export default function AdminPage() {
         return <AdminDashboard />;
       case 'users':
         return <UserManagement />;
+      case 'registrations':
+        return <PendingRegistrationsManagement />;
       case 'projects':
         return <ProjectManagement />;
       case 'events':

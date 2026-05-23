@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Evenement, ParticipationEvenement, Utilisateur, Club, Projet, Tache } = require('../models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club, Projet, Tache, InvitationEvenement, InvitationProjet } = require('../models');
 const ApiError = require('../utils/apiError');
 
 // ============================================================================
@@ -45,6 +45,39 @@ async function getClubStats(req, res, next) {
         activeParticipations,
         totalProjectParticipants,
         validationRate,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// ============================================================================
+// AVAILABLE TEACHERS
+// ============================================================================
+
+async function getAvailableTeachers(req, res, next) {
+  try {
+    // Récupérer tous les enseignants avec leurs informations
+    const teachers = await Utilisateur.find({
+      role: 'enseignant',
+    })
+      .select('_id nom prenom email avatarUrl')
+      .sort({ nom: 1, prenom: 1 });
+
+    const formattedTeachers = teachers.map(teacher => ({
+      id: teacher._id.toString(),
+      nom: teacher.nom,
+      prenom: teacher.prenom,
+      email: teacher.email,
+      photo: teacher.avatarUrl || null,
+      fullName: `${teacher.nom} ${teacher.prenom}`,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: formattedTeachers,
       },
     });
   } catch (error) {
@@ -367,7 +400,7 @@ async function validateEventParticipation(req, res, next) {
 async function inviteTeacherToEvent(req, res, next) {
   try {
     const { eventId } = req.params;
-    const { teacherId } = req.body;
+    const { teacherId, message } = req.body;
 
     if (!teacherId) {
       return next(new ApiError(400, 'L\'ID de l\'enseignant est obligatoire'));
@@ -391,38 +424,42 @@ async function inviteTeacherToEvent(req, res, next) {
       return next(new ApiError(404, 'Enseignant non trouvé'));
     }
 
-    // Vérifier si l'enseignant est déjà inscrit
-    let participation = await ParticipationEvenement.findOne({
+    // Chercher les modèles
+    const { InvitationEvenement } = require('../models');
+
+    // Vérifier si l'invitation existe déjà (toute invitation, quel que soit le statut)
+    let invitation = await InvitationEvenement.findOne({
       evenementId: event._id,
-      utilisateurId: teacherId,
+      enseignantId: teacherId,
     });
 
-    if (participation) {
-      return res.status(200).json({
-        success: true,
-        message: 'Enseignant déjà invité à cet événement',
-        data: {
-          utilisateurId: teacherId,
-          statut: participation.statut,
-        },
+    if (invitation) {
+      return res.status(400).json({
+        success: false,
+        message: 'Une invitation a déjà été envoyée à cet enseignant pour cet événement',
       });
     }
 
-    // Créer une participation pour l'enseignant
-    participation = new ParticipationEvenement({
+    // Créer une nouvelle invitation
+    invitation = new (require('../models').InvitationEvenement)({
       evenementId: event._id,
-      utilisateurId: teacherId,
-      statut: 'confirme',
+      enseignantId: teacherId,
+      clubId: req.user.clubId,
+      message,
+      statut: 'en_attente',
     });
 
-    await participation.save();
+    await invitation.save();
 
     return res.status(201).json({
       success: true,
-      message: 'Enseignant invité avec succès',
+      message: 'Invitation envoyée avec succès',
       data: {
-        utilisateurId: teacherId,
-        statut: 'confirme',
+        id: invitation._id.toString(),
+        evenementId: event._id.toString(),
+        enseignantId: teacherId,
+        statut: 'en_attente',
+        dateInvitation: invitation.dateInvitation,
       },
     });
   } catch (error) {
@@ -701,7 +738,7 @@ async function removeProjectParticipant(req, res, next) {
 async function inviteTeacherToProject(req, res, next) {
   try {
     const { projectId } = req.params;
-    const { teacherId } = req.body;
+    const { teacherId, message } = req.body;
 
     if (!teacherId) {
       return next(new ApiError(400, 'L\'ID de l\'enseignant est obligatoire'));
@@ -725,16 +762,209 @@ async function inviteTeacherToProject(req, res, next) {
       return next(new ApiError(404, 'Enseignant non trouvé'));
     }
 
-    // L'enseignant devient co-encadrant
-    project.enseignantId = teacherId;
-    await project.save();
+    // Chercher le modèle
+    const { InvitationProjet } = require('../models');
+
+    // Vérifier si l'invitation existe déjà (toute invitation, quel que soit le statut)
+    let invitation = await InvitationProjet.findOne({
+      projetId: project._id,
+      enseignantId: teacherId,
+    });
+
+    if (invitation) {
+      return res.status(400).json({
+        success: false,
+        message: 'Une invitation a déjà été envoyée à cet enseignant pour ce projet',
+      });
+    }
+
+    // Créer une nouvelle invitation
+    invitation = new InvitationProjet({
+      projetId: project._id,
+      enseignantId: teacherId,
+      clubId: req.user.clubId,
+      message,
+      statut: 'en_attente',
+    });
+
+    await invitation.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Invitation envoyée avec succès',
+      data: {
+        id: invitation._id.toString(),
+        projetId: project._id.toString(),
+        enseignantId: teacherId,
+        statut: 'en_attente',
+        dateInvitation: invitation.dateInvitation,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// ============================================================================
+// EVENT TEACHER INVITATIONS TRACKING
+// ============================================================================
+
+async function getEventTeacherInvitations(req, res, next) {
+  try {
+    const { eventId } = req.params;
+
+    const event = await Evenement.findOne({
+      _id: eventId,
+      clubId: req.user.clubId,
+    });
+
+    if (!event) {
+      return next(new ApiError(404, 'Événement non trouvé'));
+    }
+
+    const invitations = await InvitationEvenement.find({
+      evenementId: eventId,
+      clubId: req.user.clubId,
+    })
+      .populate('enseignantId', 'nom prenom email grade')
+      .sort({ dateInvitation: -1 });
 
     return res.status(200).json({
       success: true,
-      message: 'Enseignant invité avec succès en tant qu\'encadrant',
       data: {
-        enseignantId: teacherId,
+        items: invitations.map(inv => ({
+          id: inv._id.toString(),
+          enseignantId: inv.enseignantId._id.toString(),
+          enseignant: `${inv.enseignantId.nom} ${inv.enseignantId.prenom}`,
+          email: inv.enseignantId.email,
+          grade: inv.enseignantId.grade,
+          statut: inv.statut,
+          message: inv.message,
+          dateInvitation: inv.dateInvitation,
+          dateReponse: inv.dateReponse,
+        })),
       },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function cancelEventInvitation(req, res, next) {
+  try {
+    const { eventId, invitationId } = req.params;
+
+    const event = await Evenement.findOne({
+      _id: eventId,
+      clubId: req.user.clubId,
+    });
+
+    if (!event) {
+      return next(new ApiError(404, 'Événement non trouvé'));
+    }
+
+    const invitation = await InvitationEvenement.findOne({
+      _id: invitationId,
+      evenementId: eventId,
+      clubId: req.user.clubId,
+    });
+
+    if (!invitation) {
+      return next(new ApiError(404, 'Invitation non trouvée'));
+    }
+
+    if (invitation.statut !== 'en_attente') {
+      return next(new ApiError(400, 'Impossible d\'annuler une invitation déjà traitée'));
+    }
+
+    await InvitationEvenement.deleteOne({ _id: invitationId });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Invitation annulée',
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// ============================================================================
+// PROJECT TEACHER INVITATIONS TRACKING
+// ============================================================================
+
+async function getProjectTeacherInvitations(req, res, next) {
+  try {
+    const { projectId } = req.params;
+
+    const project = await Projet.findOne({
+      _id: projectId,
+      clubId: req.user.clubId,
+    });
+
+    if (!project) {
+      return next(new ApiError(404, 'Projet non trouvé'));
+    }
+
+    const invitations = await InvitationProjet.find({
+      projetId: projectId,
+      clubId: req.user.clubId,
+    })
+      .populate('enseignantId', 'nom prenom email grade')
+      .sort({ dateInvitation: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: invitations.map(inv => ({
+          id: inv._id.toString(),
+          enseignantId: inv.enseignantId._id.toString(),
+          enseignant: `${inv.enseignantId.nom} ${inv.enseignantId.prenom}`,
+          email: inv.enseignantId.email,
+          grade: inv.enseignantId.grade,
+          statut: inv.statut,
+          message: inv.message,
+          dateInvitation: inv.dateInvitation,
+          dateReponse: inv.dateReponse,
+        })),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function cancelProjectInvitation(req, res, next) {
+  try {
+    const { projectId, invitationId } = req.params;
+
+    const project = await Projet.findOne({
+      _id: projectId,
+      clubId: req.user.clubId,
+    });
+
+    if (!project) {
+      return next(new ApiError(404, 'Projet non trouvé'));
+    }
+
+    const invitation = await InvitationProjet.findOne({
+      _id: invitationId,
+      projetId: projectId,
+      clubId: req.user.clubId,
+    });
+
+    if (!invitation) {
+      return next(new ApiError(404, 'Invitation non trouvée'));
+    }
+
+    if (invitation.statut !== 'en_attente') {
+      return next(new ApiError(400, 'Impossible d\'annuler une invitation déjà traitée'));
+    }
+
+    await InvitationProjet.deleteOne({ _id: invitationId });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Invitation annulée',
     });
   } catch (error) {
     return next(error);
@@ -743,6 +973,7 @@ async function inviteTeacherToProject(req, res, next) {
 
 module.exports = {
   getClubStats,
+  getAvailableTeachers,
   getClubProfile,
   updateClubProfile,
   listClubEvents,
@@ -752,6 +983,8 @@ module.exports = {
   listEventParticipations,
   validateEventParticipation,
   inviteTeacherToEvent,
+  getEventTeacherInvitations,
+  cancelEventInvitation,
   listClubProjects,
   createClubProject,
   updateClubProject,
@@ -760,4 +993,6 @@ module.exports = {
   addProjectParticipant,
   removeProjectParticipant,
   inviteTeacherToProject,
+  getProjectTeacherInvitations,
+  cancelProjectInvitation,
 };

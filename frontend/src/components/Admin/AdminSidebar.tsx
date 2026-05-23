@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, FolderOpen, Calendar, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, FolderOpen, Calendar, LogOut, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -9,17 +9,18 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ activeTab, setActiveTab }: AdminSidebarProps) {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { signOut } = useAuth();
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'registrations', label: 'Inscriptions', icon: CheckCircle },
     { id: 'users', label: 'Utilisateurs', icon: Users },
     { id: 'projects', label: 'Projets', icon: FolderOpen },
     { id: 'events', label: 'Événements', icon: Calendar },
   ];
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut();
     navigate('/auth');
   };
 

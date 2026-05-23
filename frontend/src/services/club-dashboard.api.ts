@@ -7,9 +7,23 @@ import api from './api';
 export const getClubStats = async () => {
   try {
     const response = await api.get('/club-dashboard/stats');
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la récupération des statistiques:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// AVAILABLE TEACHERS
+// ============================================================================
+
+export const getAvailableTeachers = async () => {
+  try {
+    const response = await api.get('/club-dashboard/available-teachers');
+    return response.data.items;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des enseignants:', error);
     throw error;
   }
 };
@@ -21,7 +35,7 @@ export const getClubStats = async () => {
 export const getClubProfile = async () => {
   try {
     const response = await api.get('/club-dashboard/profile');
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la récupération du profil du club:', error);
     throw error;
@@ -35,7 +49,7 @@ export const updateClubProfile = async (clubData: {
 }) => {
   try {
     const response = await api.patch('/club-dashboard/profile', clubData);
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la mise à jour du profil du club:', error);
     throw error;
@@ -49,7 +63,7 @@ export const updateClubProfile = async (clubData: {
 export const listClubEvents = async () => {
   try {
     const response = await api.get('/club-dashboard/events');
-    return response.data.data.items;
+    return response.data.items;
   } catch (error) {
     console.error('Erreur lors de la récupération des événements:', error);
     throw error;
@@ -66,7 +80,7 @@ export const createClubEvent = async (eventData: {
 }) => {
   try {
     const response = await api.post('/club-dashboard/events', eventData);
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la création de l\'événement:', error);
     throw error;
@@ -86,7 +100,7 @@ export const updateClubEvent = async (
 ) => {
   try {
     const response = await api.patch(`/club-dashboard/events/${eventId}`, eventData);
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la mise à jour de l\'événement:', error);
     throw error;
@@ -110,7 +124,7 @@ export const deleteClubEvent = async (eventId: string) => {
 export const listEventParticipations = async (eventId: string) => {
   try {
     const response = await api.get(`/club-dashboard/events/${eventId}/participations`);
-    return response.data.data.items;
+    return response.data.items;
   } catch (error) {
     console.error('Erreur lors de la récupération des participations:', error);
     throw error;
@@ -127,7 +141,7 @@ export const validateEventParticipation = async (
       `/club-dashboard/events/${eventId}/participations/${participationId}`,
       { statut }
     );
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la validation de la participation:', error);
     throw error;
@@ -139,7 +153,7 @@ export const inviteTeacherToEvent = async (eventId: string, teacherId: string) =
     const response = await api.post(`/club-dashboard/events/${eventId}/invite-teacher`, {
       teacherId,
     });
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de l\'invitation de l\'enseignant:', error);
     throw error;
@@ -153,7 +167,7 @@ export const inviteTeacherToEvent = async (eventId: string, teacherId: string) =
 export const listClubProjects = async () => {
   try {
     const response = await api.get('/club-dashboard/projects');
-    return response.data.data.items;
+    return response.data.items;
   } catch (error) {
     console.error('Erreur lors de la récupération des projets:', error);
     throw error;
@@ -170,7 +184,7 @@ export const createClubProject = async (projectData: {
 }) => {
   try {
     const response = await api.post('/club-dashboard/projects', projectData);
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la création du projet:', error);
     throw error;
@@ -191,7 +205,7 @@ export const updateClubProject = async (
 ) => {
   try {
     const response = await api.patch(`/club-dashboard/projects/${projectId}`, projectData);
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de la mise à jour du projet:', error);
     throw error;
@@ -215,7 +229,7 @@ export const deleteClubProject = async (projectId: string) => {
 export const getProjectParticipants = async (projectId: string) => {
   try {
     const response = await api.get(`/club-dashboard/projects/${projectId}/participants`);
-    return response.data.data.items;
+    return response.data.items;
   } catch (error) {
     console.error('Erreur lors de la récupération des participants:', error);
     throw error;
@@ -251,9 +265,61 @@ export const inviteTeacherToProject = async (projectId: string, teacherId: strin
     const response = await api.post(`/club-dashboard/projects/${projectId}/invite-teacher`, {
       teacherId,
     });
-    return response.data.data;
+    return response.data;
   } catch (error) {
     console.error('Erreur lors de l\'invitation de l\'enseignant:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// EVENT TEACHER INVITATIONS TRACKING (New System)
+// ============================================================================
+
+export const getEventTeacherInvitations = async (eventId: string) => {
+  try {
+    const response = await api.get(`/club-dashboard/events/${eventId}/teacher-invitations`);
+    return response.data.items;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des invitations d\'enseignants:', error);
+    throw error;
+  }
+};
+
+export const cancelEventInvitation = async (eventId: string, invitationId: string) => {
+  try {
+    const response = await api.delete(
+      `/club-dashboard/events/${eventId}/teacher-invitations/${invitationId}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Erreur lors de l\'annulation de l\'invitation:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// PROJECT TEACHER INVITATIONS TRACKING (New System)
+// ============================================================================
+
+export const getProjectTeacherInvitations = async (projectId: string) => {
+  try {
+    const response = await api.get(`/club-dashboard/projects/${projectId}/teacher-invitations`);
+    return response.data.items;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des invitations d\'enseignants:', error);
+    throw error;
+  }
+};
+
+export const cancelProjectInvitation = async (projectId: string, invitationId: string) => {
+  try {
+    const response = await api.delete(
+      `/club-dashboard/projects/${projectId}/teacher-invitations/${invitationId}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Erreur lors de l\'annulation de l\'invitation:', error);
     throw error;
   }
 };

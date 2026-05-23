@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import axios from "axios";
-import api from "@/services/api";
+import api, { requestPasswordReset as requestPasswordResetApi, resetPassword as resetPasswordApi } from "@/services/api";
 
 type AuthUser = {
   id?: string | null;
@@ -10,15 +10,18 @@ type AuthUser = {
   nom?: string | null;
   prenom?: string | null;
   role?: string | null;
-  avatar_url?: string | null;
   avatarUrl?: string | null;
+  competenceIds?: string[];
+  clubId?: string | null;
 };
 
 type AuthResult = {
   error: { message: string } | null;
   needsVerification?: boolean;
+  needsAdminApproval?: boolean;
   email?: string;
   message?: string;
+  role?: string;
 };
 
 type BackendAuthResponse = {
@@ -28,8 +31,10 @@ type BackendAuthResponse = {
 
 type RegistrationResponse = {
   needsVerification?: boolean;
+  needsAdminApproval?: boolean;
   email?: string;
   message?: string;
+  role?: string;
 };
 
 type AuthContextValue = {
@@ -50,9 +55,13 @@ type AuthContextValue = {
     clubDescription?: string;
     clubSpecialite?: string;
     avatarUrl?: string;
+    competenceIds?: string[];
   }) => Promise<AuthResult>;
+
   verifyEmail: (payload: { email: string; code: string }) => Promise<AuthResult>;
   resendVerificationCode: (email: string) => Promise<AuthResult>;
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
+  resetPassword: (payload: { email: string; token: string; newPassword: string }) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -162,13 +171,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       verifyEmail: async ({ email, code }) => {
         try {
-          const { data } = await api.post<BackendAuthResponse>("/auth/verify-email", {
+          const { data } = await api.post<RegistrationResponse>("/auth/verify-email", {
             email,
             code,
           });
 
-          localStorage.setItem("authToken", data.token);
-          setUser(data.user);
+          // Check if admin approval is needed
+          if (data.needsAdminApproval) {
+            return {
+              error: null,
+              needsAdminApproval: true,
+              email: data.email,
+              role: data.role,
+              message: data.message,
+            };
+          }
+
+          // Otherwise, user is authenticated
+          if ('token' in data) {
+            localStorage.setItem("authToken", (data as any).token);
+            setUser((data as any).user);
+          }
 
           return { error: null };
         } catch (error) {
@@ -198,6 +221,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             : error instanceof Error
               ? error.message
               : "Erreur lors de lenvoi du code";
+
+          return { error: { message } };
+        }
+      },
+      requestPasswordReset: async (email) => {
+        try {
+          const { message } = await requestPasswordResetApi(email);
+          return { error: null, message };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de l envoi du lien")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de l envoi du lien";
+
+          return { error: { message } };
+        }
+      },
+      resetPassword: async ({ email, token, newPassword }) => {
+        try {
+          const { message } = await resetPasswordApi({ email, token, newPassword });
+          return { error: null, message };
+        } catch (error) {
+          const message = axios.isAxiosError(error)
+            ? (error.response?.data?.message ?? "Erreur lors de la reinitialisation")
+            : error instanceof Error
+              ? error.message
+              : "Erreur lors de la reinitialisation";
 
           return { error: { message } };
         }
@@ -239,10 +290,12 @@ export function useAuth(): AuthContextValue {
       user: null,
       loading: true,
       isAdmin: false,
-      signIn: async () => ({ error: null }),
-      signUp: async () => ({ error: null }),
-      verifyEmail: async () => ({ error: null }),
-      resendVerificationCode: async () => ({ error: null }),
+      signIn: async (_email?: string, _password?: string) => ({ error: null }),
+      signUp: async (_payload?: any) => ({ error: null }),
+      verifyEmail: async (_p?: any) => ({ error: null }),
+      resendVerificationCode: async (_email?: string) => ({ error: null }),
+      requestPasswordReset: async (_email?: string) => ({ error: null }),
+      resetPassword: async (_payload?: any) => ({ error: null }),
       signOut: async () => undefined,
       refreshUser: async () => undefined,
     };

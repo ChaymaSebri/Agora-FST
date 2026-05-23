@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { TeacherSelect } from '@/components/TeacherSelect';
 
 interface Event {
   id: string;
@@ -220,16 +220,18 @@ export function ClubEventParticipations() {
                       <DialogHeader>
                         <DialogTitle>Inviter un enseignant</DialogTitle>
                         <DialogDescription>
-                          Entrez l'ID de l'enseignant à inviter
+                          Sélectionnez un enseignant à inviter à cet événement
                         </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
-                        <Input
-                          placeholder="ID de l'enseignant"
+                        <TeacherSelect
                           value={teacherId}
-                          onChange={(e) => setTeacherId(e.target.value)}
+                          onValueChange={setTeacherId}
+                          placeholder="Choisir un enseignant..."
                         />
-                        <Button onClick={handleInviteTeacher}>Inviter</Button>
+                        <Button onClick={handleInviteTeacher} className="w-full">
+                          Inviter
+                        </Button>
                       </div>
                     </DialogContent>
                   </Dialog>

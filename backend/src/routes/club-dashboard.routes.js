@@ -10,6 +10,12 @@ const { checkRole } = require('../middlewares/authorization.middleware');
 router.get('/stats', authenticate, checkRole('club'), clubDashboardController.getClubStats);
 
 // ============================================================================
+// AVAILABLE TEACHERS
+// ============================================================================
+
+router.get('/available-teachers', authenticate, checkRole('club'), clubDashboardController.getAvailableTeachers);
+
+// ============================================================================
 // CLUB PROFILE & INFO
 // ============================================================================
 
@@ -32,6 +38,8 @@ router.delete('/events/:id', authenticate, checkRole('club'), clubDashboardContr
 router.get('/events/:eventId/participations', authenticate, checkRole('club'), clubDashboardController.listEventParticipations);
 router.patch('/events/:eventId/participations/:participationId', authenticate, checkRole('club'), clubDashboardController.validateEventParticipation);
 router.post('/events/:eventId/invite-teacher', authenticate, checkRole('club'), clubDashboardController.inviteTeacherToEvent);
+router.get('/events/:eventId/teacher-invitations', authenticate, checkRole('club'), clubDashboardController.getEventTeacherInvitations);
+router.delete('/events/:eventId/teacher-invitations/:invitationId', authenticate, checkRole('club'), clubDashboardController.cancelEventInvitation);
 
 // ============================================================================
 // PROJECTS MANAGEMENT
@@ -50,5 +58,7 @@ router.get('/projects/:projectId/participants', authenticate, checkRole('club'),
 router.post('/projects/:projectId/participants', authenticate, checkRole('club'), clubDashboardController.addProjectParticipant);
 router.delete('/projects/:projectId/participants/:utilisateurId', authenticate, checkRole('club'), clubDashboardController.removeProjectParticipant);
 router.post('/projects/:projectId/invite-teacher', authenticate, checkRole('club'), clubDashboardController.inviteTeacherToProject);
+router.get('/projects/:projectId/teacher-invitations', authenticate, checkRole('club'), clubDashboardController.getProjectTeacherInvitations);
+router.delete('/projects/:projectId/teacher-invitations/:invitationId', authenticate, checkRole('club'), clubDashboardController.cancelProjectInvitation);
 
 module.exports = router;

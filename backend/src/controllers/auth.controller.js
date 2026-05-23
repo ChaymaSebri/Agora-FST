@@ -36,6 +36,24 @@ async function resendVerificationCode(req, res, next) {
   }
 }
 
+async function requestPasswordReset(req, res, next) {
+  try {
+    const result = await authService.requestPasswordReset(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function resetPassword(req, res, next) {
+  try {
+    const result = await authService.resetPassword(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function logout(req, res) {
   return res.status(200).json({
     message: 'Deconnexion reussie',
@@ -53,6 +71,8 @@ module.exports = {
   login,
   verifyEmail,
   resendVerificationCode,
+  requestPasswordReset,
+  resetPassword,
   logout,
   me,
 };

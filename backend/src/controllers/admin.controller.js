@@ -5,8 +5,11 @@ const {
   Evenement,
   ParticipationEvenement,
   Club,
+  PendingRegistration,
 } = require('../models');
+const mongoose = require('mongoose');
 const ApiError = require('../utils/apiError');
+const authService = require('../services/auth.service');
 
 /**
  * =====================
@@ -73,6 +76,25 @@ async function getDashboardStats(req, res, next) {
       .populate('organisateurId', 'nom prenom');
 
     res.json(stats);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Debug: expose current MongoDB connection state and pending registrations count.
+ */
+async function getDatabaseDebugInfo(req, res, next) {
+  try {
+    const pendingRegistrationsCount = await PendingRegistration.countDocuments();
+
+    res.json({
+      database: mongoose.connection.name,
+      readyState: mongoose.connection.readyState,
+      collections: {
+        pendingRegistrationsCount,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -597,15 +619,86 @@ async function getEventParticipantStats(req, res, next) {
   }
 }
 
+/**
+ * =====================
+ * PENDING REGISTRATIONS MANAGEMENT
+ * =====================
+ */
+
+/**
+ * Obtenir toutes les inscriptions en attente (enseignants et clubs uniquement)
+ */
+async function getPendingRegistrations(req, res, next) {
+  try {
+    const { role = 'all', status = 'all' } = req.query;
+
+    const registrations = await authService.getPendingRegistrations({
+      role: role !== 'all' ? role : null,
+      status: status !== 'all' ? status : null,
+    });
+    
+    res.json({
+      registrations,
+      total: registrations.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Approuver une inscription en attente
+ */
+async function approvePendingRegistration(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return next(new ApiError(400, 'ID d inscription requis'));
+    }
+
+    const result = await authService.approvePendingRegistration(id);
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Rejeter une inscription en attente
+ */
+async function rejectPendingRegistration(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { notes = '' } = req.body;
+
+    if (!id) {
+      return next(new ApiError(400, 'ID d inscription requis'));
+    }
+
+    const result = await authService.rejectPendingRegistration(id, notes);
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   // Dashboard
   getDashboardStats,
+  getDatabaseDebugInfo,
   // Users
   getAllUsers,
   getUserById,
   updateUserRole,
   disableUser,
   enableUser,
+  // Pending Registrations
+  getPendingRegistrations,
+  approvePendingRegistration,
+  rejectPendingRegistration,
   // Projects
   getAllProjects,
   getProjectById,
