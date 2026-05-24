@@ -7,40 +7,53 @@ export function useNotifications() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Charger les notifications
+  const loadNotifications = useCallback(async () => {
+    const token = localStorage.getItem('authToken');
+    if (!token) return null;
+
+    try {
+      setIsLoading(true);
+      const data = await notificationService.getNotifications(50, 0);
+      const notificationsList = Array.isArray((data as any)?.notifications) ? (data as any).notifications : [];
+      console.log('Notifications reçues du service:', notificationsList);
+      setNotifications(notificationsList);
+      
+      const count = await notificationService.getUnreadCount();
+      setUnreadCount(count);
+      return { notifications: notificationsList, total: Number((data as any)?.total || 0) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur lors du chargement des notifications';
+      setError(message);
+      console.error('Erreur dans loadNotifications:', err);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   // Charger les notifications au montage
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) return;
 
-    const loadNotifications = async () => {
-      try {
-        setIsLoading(true);
-        const data = await notificationService.getNotifications(50, 0);
-        setNotifications(data.notifications);
-        
-        const count = await notificationService.getUnreadCount();
-        setUnreadCount(count);
-
-        // Connecter Socket.io
-        notificationService.connect(token);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erreur lors du chargement des notifications');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadNotifications();
+
+    // Connecter Socket.io
+    notificationService.connect(token);
 
     return () => {
       notificationService.disconnect();
     };
-  }, []);
+  }, [loadNotifications]);
 
   // S'abonner aux nouvelles notifications
   useEffect(() => {
     const unsubscribe = notificationService.onNewNotification((newNotification) => {
-      setNotifications((prev) => [newNotification, ...prev]);
+      setNotifications((prev) => [
+        { ...newNotification, etat: newNotification.etat || 'ferme', lue: false },
+        ...prev,
+      ]);
       setUnreadCount((prev) => prev + 1);
     });
 
@@ -53,7 +66,7 @@ export function useNotifications() {
       await notificationService.markAsRead(notificationId);
       
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, lue: true } : n))
+        prev.map((n) => (n.id === notificationId ? { ...n, etat: 'ouvert', lue: true } : n))
       );
       
       setUnreadCount((prev) => Math.max(0, prev - 1));
@@ -67,7 +80,7 @@ export function useNotifications() {
     try {
       await notificationService.markAllAsRead();
       
-      setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })));
+      setNotifications((prev) => prev.map((n) => ({ ...n, etat: 'ouvert', lue: true })));
       setUnreadCount(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la marque des notifications');
@@ -79,7 +92,7 @@ export function useNotifications() {
     try {
       await notificationService.deleteNotification(notificationId);
       
-      const wasUnread = !notifications.find((n) => n.id === notificationId)?.lue;
+      const wasUnread = notifications.find((n) => n.id === notificationId)?.etat === 'ferme';
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
       
       if (wasUnread) {
@@ -98,5 +111,6 @@ export function useNotifications() {
     markAsRead,
     markAllAsRead,
     deleteNotification,
+    loadNotifications,
   };
 }

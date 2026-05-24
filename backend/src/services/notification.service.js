@@ -45,6 +45,7 @@ class NotificationService {
         message,
         relatedId,
         relatedType,
+        etat: 'ferme',
         lue: false,
       });
 
@@ -61,6 +62,8 @@ class NotificationService {
             message: notification.message,
             relatedId: notification.relatedId?.toString(),
             relatedType: notification.relatedType,
+            etat: notification.etat,
+            lue: notification.lue,
             dateNotification: notification.dateNotification,
           });
         });
@@ -111,7 +114,10 @@ class NotificationService {
     try {
       const notifications = await Notification.find({
         utilisateurId,
-        lue: false,
+        $or: [
+          { etat: 'ferme' },
+          { etat: { $exists: false }, lue: false },
+        ],
       })
         .sort({ dateNotification: -1 })
         .limit(50)
@@ -145,15 +151,28 @@ class NotificationService {
   }
 
   /**
-   * Marque une notification comme lue
+   * Marque une notification comme ouverte
    */
   async markAsRead(notificationId, utilisateurId) {
     try {
       const notification = await Notification.findOneAndUpdate(
-        { _id: notificationId, utilisateurId },
-        { lue: true },
+        {
+          _id: notificationId,
+          utilisateurId,
+          $or: [
+            { etat: 'ferme' },
+            { etat: { $exists: false }, lue: false },
+          ],
+        },
+        {
+          $set: {
+            lue: true,
+            etat: 'ouvert',
+            dateOuverture: new Date(),
+          },
+        },
         { new: true }
-      );
+      ) || await Notification.findOne({ _id: notificationId, utilisateurId });
 
       return notification;
     } catch (error) {
@@ -163,13 +182,83 @@ class NotificationService {
   }
 
   /**
-   * Marque toutes les notifications d'un utilisateur comme lues
+   * Marque une notification comme ouverte (etat: 'ouvert') sans toucher au champ 'lue'
+   */
+  async markAsOpened(notificationId, utilisateurId) {
+    try {
+      const notification = await Notification.findOneAndUpdate(
+        {
+          _id: notificationId,
+          utilisateurId,
+          $or: [
+            { etat: 'ferme' },
+            { etat: { $exists: false } },
+          ],
+        },
+        {
+          $set: {
+            etat: 'ouvert',
+            dateOuverture: new Date(),
+          },
+        },
+        { new: true }
+      ) || await Notification.findOne({ _id: notificationId, utilisateurId });
+
+      return notification;
+    } catch (error) {
+      console.error('Erreur lors du marquage de notification comme ouverte:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Marque toutes les notifications d'un utilisateur comme ouvertes (etat: 'ouvert')
+   */
+  async markAllAsOpened(utilisateurId) {
+    try {
+      await Notification.updateMany(
+        {
+          utilisateurId,
+          $or: [
+            { etat: 'ferme' },
+            { etat: { $exists: false } },
+          ],
+        },
+        {
+          $set: {
+            etat: 'ouvert',
+            dateOuverture: new Date(),
+          },
+        }
+      );
+
+      return true;
+    } catch (error) {
+      console.error('Erreur lors du marquage de toutes les notifications comme ouvertes:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Marque toutes les notifications d'un utilisateur comme ouvertes
    */
   async markAllAsRead(utilisateurId) {
     try {
       await Notification.updateMany(
-        { utilisateurId, lue: false },
-        { lue: true }
+        {
+          utilisateurId,
+          $or: [
+            { etat: 'ferme' },
+            { etat: { $exists: false }, lue: false },
+          ],
+        },
+        {
+          $set: {
+            lue: true,
+            etat: 'ouvert',
+            dateOuverture: new Date(),
+          },
+        }
       );
 
       return true;
@@ -197,13 +286,16 @@ class NotificationService {
   }
 
   /**
-   * Compte les notifications non lues
+   * Compte les notifications non ouvertes
    */
   async countUnread(utilisateurId) {
     try {
       const count = await Notification.countDocuments({
         utilisateurId,
-        lue: false,
+        $or: [
+          { etat: 'ferme' },
+          { etat: { $exists: false }, lue: false },
+        ],
       });
 
       return count;

@@ -208,7 +208,7 @@ async function getTeacherEventInvitations(req, res, next) {
   }
 }
 
-async function respondToEventInvitation(req, res, next) {
+async function respondToLegacyEventInvitation(req, res, next) {
   try {
     const { invitationId } = req.params;
     const { statut } = req.body; // 'confirme' ou 'annule'
@@ -591,6 +591,7 @@ module.exports = {
   getAllProjects,
   getProjectById,
   getTeacherEventInvitations,
+  respondToLegacyEventInvitation,
   respondToEventInvitation,
   getTeacherProjectEncadrement,
   getTeacherProjectInvitations,

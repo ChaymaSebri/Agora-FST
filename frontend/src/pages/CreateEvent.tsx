@@ -12,6 +12,7 @@ import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "luc
 import { z } from "zod";
 import { ApiError, createEvent, fetchClubs, fetchCompetences } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { uploadImageToCloudinary } from "@/lib/cloudinary";
 
 const eventSchema = z.object({
   title: z.string().min(3, "Le titre doit contenir au moins 3 caractères").max(100),
@@ -38,6 +39,8 @@ const CreateEvent = () => {
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
   const [maxAttendees, setMaxAttendees] = useState("30");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -118,10 +121,16 @@ const CreateEvent = () => {
       });
       
       setIsLoading(true);
+
+      let imageUrl: string | undefined;
+      if (photoFile) {
+        imageUrl = await uploadImageToCloudinary(photoFile);
+      }
       
       await createEvent({
         title,
         description,
+        imageUrl,
         type,
         date,
         time,
@@ -217,6 +226,25 @@ const CreateEvent = () => {
                 <p className="text-xs text-muted-foreground">
                   {description.length}/500 caractères
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="eventPhoto">Photo de l'événement (optionnel)</Label>
+                <Input
+                  id="eventPhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setPhotoFile(file);
+                    setPhotoPreview(file ? URL.createObjectURL(file) : null);
+                  }}
+                />
+                {photoPreview ? (
+                  <div className="overflow-hidden rounded-md border border-border">
+                    <img src={photoPreview} alt="Aperçu événement" className="h-48 w-full object-cover" />
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">

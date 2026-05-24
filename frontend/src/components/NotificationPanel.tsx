@@ -1,11 +1,13 @@
 import { useNotifications } from "@/hooks/useNotifications";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell, Check, Trash2, AlertCircle, CheckCircle, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useEffect } from "react";
+import notificationService from "@/services/notification.service";
 
 interface NotificationDialogProps {
   open: boolean;
@@ -19,19 +21,43 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
     isLoading, 
     markAsRead, 
     deleteNotification, 
-    markAllAsRead 
+    markAllAsRead,
+    // new opened APIs are available on the service but the hook may still use markAsRead
+    // we will call the 'markAllAsOpened' via the hook if available
+    // (the hook exposes markAllAsRead for backward compatibility)
+    loadNotifications,
   } = useNotifications();
+  const relevantNotifications = notifications;
 
-  // Filtrer les notifications pertinentes pour l'utilisateur
-  const relevantNotifications = notifications.filter((notif) => {
-    return (
-      notif.type === "participation_request" ||
-      notif.type === "participation_approved" ||
-      notif.type === "participation_rejected" ||
-      notif.type === "invitation_accepted" ||
-      notif.type === "invitation_refused"
-    );
-  });
+  // Recharger les notifications quand la dialog s'ouvre
+  useEffect(() => {
+    if (open) {
+      (async () => {
+        const data = await loadNotifications();
+            if (data?.notifications && data.notifications.length > 0) {
+              const visible = data.notifications; // current page/loaded notifications
+              const toOpen = visible.filter((n: any) => n.etat === 'ferme').map((n: any) => n.id);
+
+              if (toOpen.length > 0) {
+                try {
+                  // Call per-notification 'open' endpoint in parallel when available
+                  if ((notificationService as any)?.markAsOpened) {
+                    await Promise.all(toOpen.map((id: string) => (notificationService as any).markAsOpened(id)));
+                  } else {
+                    // Fallback to marking as read
+                    await Promise.all(toOpen.map((id: string) => markAsRead(id)));
+                  }
+
+                  // Refresh local list after marking opened
+                  await loadNotifications();
+                } catch (err) {
+                  console.error('Erreur lors du marquage des notifications affichées comme ouvertes:', err);
+                }
+              }
+            }
+      })();
+    }
+  }, [open, loadNotifications, markAllAsRead]);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -40,6 +66,12 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
       case "participation_approved":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
       case "participation_rejected":
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      case "membership_request":
+        return <AlertCircle className="w-4 h-4 text-blue-500" />;
+      case "membership_approved":
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case "membership_rejected":
         return <XCircle className="w-4 h-4 text-red-500" />;
       case "invitation_accepted":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
@@ -58,6 +90,12 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
         return "Demande acceptée";
       case "participation_rejected":
         return "Demande refusée";
+      case "membership_request":
+        return "Demande d'adhésion";
+      case "membership_approved":
+        return "Adhésion acceptée";
+      case "membership_rejected":
+        return "Adhésion refusée";
       case "invitation_accepted":
         return "Invitation acceptée";
       case "invitation_refused":
@@ -68,7 +106,16 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
   };
 
   const handleMarkAsRead = async (notificationId: string) => {
-    await markAsRead(notificationId);
+    // If available, prefer the 'open' endpoint to set etat:'ouvert' without toggling 'lue'
+    try {
+      if ((notificationService as any)?.markAsOpened) {
+        await (notificationService as any).markAsOpened(notificationId);
+      } else {
+        await markAsRead(notificationId);
+      }
+    } catch (err) {
+      console.error('Erreur lors du marquage de notification comme ouverte:', err);
+    }
   };
 
   const handleDelete = async (notificationId: string) => {
@@ -88,6 +135,9 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
               <Badge variant="default">{unreadCount} non lues</Badge>
             )}
           </DialogTitle>
+          <DialogDescription>
+            Consultez vos notifications et marquez-les comme ouvertes.
+          </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
@@ -109,7 +159,7 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
                   <div
                     key={notif.id}
                     className={`p-4 rounded-lg border transition-colors ${
-                      notif.lue
+                      notif.etat === "ouvert"
                         ? "bg-background hover:bg-muted/50"
                         : "bg-blue-50/50 hover:bg-blue-100/50 border-blue-200"
                     }`}
@@ -133,12 +183,12 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
                         </p>
                       </div>
                       <div className="flex gap-1 ml-2">
-                        {!notif.lue && (
+                        {notif.etat === "ferme" && (
                           <Button
                             size="sm"
                             variant="ghost"
                             className="h-8 w-8 p-0"
-                            title="Marquer comme lue"
+                            title="Marquer comme ouverte"
                             onClick={() => handleMarkAsRead(notif.id)}
                           >
                             <Check className="w-4 h-4 text-muted-foreground hover:text-foreground" />

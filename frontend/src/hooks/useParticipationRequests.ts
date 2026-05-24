@@ -28,10 +28,26 @@ export interface ParticipationRequest {
     id: string;
     nom: string;
   };
-  statut: 'en_attente' | 'accepte' | 'refuse';
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  statut?: 'en_attente' | 'confirme' | 'annule';
   message?: string;
   dateRequete: string;
   dateReponse?: string;
+  student?: {
+    id: string;
+    nom: string;
+    prenom: string;
+    email: string;
+    niveau?: string;
+    filiere?: string;
+  };
+  project?: {
+    id: string;
+    titre: string;
+    description?: string;
+    deadline?: string;
+    statut?: string;
+  };
 }
 
 /**
@@ -102,10 +118,10 @@ export function useClubParticipationRequests() {
   }, []);
 
   const respond = useCallback(
-    async (projectId: string, requestId: string, statut: 'accepte' | 'refuse') => {
+    async (projectId: string, requestId: string, action: 'accept' | 'reject') => {
       try {
         setError(null);
-        await respondToParticipationRequest(projectId, requestId, statut);
+        await respondToParticipationRequest(requestId, action);
         await fetchProjectRequests(projectId);
         return true;
       } catch (err) {
@@ -121,7 +137,7 @@ export function useClubParticipationRequests() {
     async (projectId: string, requestId: string) => {
       try {
         setError(null);
-        await cancelParticipationRequest(projectId, requestId);
+        await cancelParticipationRequest(requestId);
         await fetchProjectRequests(projectId);
         return true;
       } catch (err) {

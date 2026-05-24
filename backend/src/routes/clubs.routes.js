@@ -3,6 +3,7 @@ const clubsController = require('../controllers/clubs.controller');
 const { authenticate, authorizeRoles } = require('../middlewares/auth.middleware');
 
 router.get('/', clubsController.listClubs);
+router.get('/:clubId/students', authenticate, authorizeRoles('club'), clubsController.listClubStudents);
 router.get('/membership-requests/me', authenticate, clubsController.listMyMembershipRequests);
 router.get('/membership-requests', authenticate, authorizeRoles('club'), clubsController.listClubMembershipRequests);
 router.patch('/membership-requests/:requestId', authenticate, authorizeRoles('club'), clubsController.resolveMembershipRequest);

@@ -1,5 +1,7 @@
 import api from './api.js';
 
+const unwrap = (response: any) => response?.data?.data ?? response?.data;
+
 // ============================================================================
 // STUDENT PARTICIPATION REQUESTS
 // ============================================================================
@@ -11,19 +13,19 @@ export const requestProjectParticipation = async (
   projectId: string,
   message?: string
 ): Promise<any> => {
-  const response = await api.post(
-    `/student/projects/${projectId}/participation-request`,
-    { message }
-  );
-  return response.data;
+  const response = await api.post('/project-participation-requests', {
+    projectId,
+    message,
+  });
+  return unwrap(response);
 };
 
 /**
  * Récupérer les demandes de participation de l'étudiant
  */
 export const getMyParticipationRequests = async (): Promise<any> => {
-  const response = await api.get('/student/participation-requests');
-  return response.data;
+  const response = await api.get('/project-participation-requests/me');
+  return unwrap(response);
 };
 
 // ============================================================================
@@ -36,36 +38,27 @@ export const getMyParticipationRequests = async (): Promise<any> => {
 export const getProjectParticipationRequests = async (
   projectId: string
 ): Promise<any> => {
-  const response = await api.get(
-    `/club-dashboard/projects/${projectId}/participation-requests`
-  );
-  return response.data;
+  const response = await api.get(`/project-participation-requests/project/${projectId}`);
+  return unwrap(response);
 };
 
 /**
  * Accepter/refuser une demande de participation
  */
 export const respondToParticipationRequest = async (
-  projectId: string,
   requestId: string,
-  statut: 'accepte' | 'refuse'
+  action: 'accept' | 'reject'
 ): Promise<any> => {
-  const response = await api.patch(
-    `/club-dashboard/projects/${projectId}/participation-requests/${requestId}/respond`,
-    { statut }
-  );
-  return response.data;
+  const response = await api.patch(`/project-participation-requests/${requestId}/${action}`);
+  return unwrap(response);
 };
 
 /**
  * Annuler une demande de participation (club)
  */
 export const cancelParticipationRequest = async (
-  projectId: string,
   requestId: string
 ): Promise<any> => {
-  const response = await api.delete(
-    `/club-dashboard/projects/${projectId}/participation-requests/${requestId}`
-  );
-  return response.data;
+  const response = await api.patch(`/project-participation-requests/${requestId}/cancel`);
+  return unwrap(response);
 };

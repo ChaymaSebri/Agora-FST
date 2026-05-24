@@ -28,11 +28,14 @@ async function requestProjectParticipation(req, res, next) {
     const existingRequest = await ProjectParticipationRequest.findOne({
       projetId: projectId,
       etudiantId: studentId,
-      statut: { $in: ['en_attente', 'accepte'] },
+      $or: [
+        { statut: { $in: ['en_attente', 'confirme'] } },
+        { status: { $in: ['pending', 'accepted'] } },
+      ],
     });
 
     if (existingRequest) {
-      if (existingRequest.statut === 'accepte') {
+      if (existingRequest.status === 'accepted' || existingRequest.statut === 'confirme') {
         return next(new ApiError(400, 'Vous participez déjà à ce projet'));
       }
       return next(new ApiError(400, 'Vous avez déjà une demande en attente pour ce projet'));
@@ -40,10 +43,13 @@ async function requestProjectParticipation(req, res, next) {
 
     // Créer la demande de participation
     const participationRequest = new ProjectParticipationRequest({
+      projectId,
       projetId: projectId,
+      studentId,
       etudiantId: studentId,
       clubId: project.clubId._id,
       message,
+      status: 'pending',
       statut: 'en_attente',
     });
 
@@ -73,6 +79,7 @@ async function requestProjectParticipation(req, res, next) {
       data: {
         id: participationRequest._id.toString(),
         projetId: projectId,
+        status: 'pending',
         statut: 'en_attente',
         dateRequete: participationRequest.dateRequete,
       },
@@ -114,6 +121,7 @@ async function getMyParticipationRequests(req, res, next) {
             nom: r.clubId.nom,
           },
           statut: r.statut,
+          status: r.status || (r.statut === 'confirme' ? 'accepted' : r.statut === 'annule' ? 'rejected' : 'pending'),
           dateRequete: r.dateRequete,
           dateReponse: r.dateReponse,
         })),

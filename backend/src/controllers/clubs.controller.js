@@ -1,5 +1,6 @@
-const { Club, ClubMembershipRequest } = require('../models');
+const { Club, ClubMembershipRequest, Utilisateur } = require('../models');
 const ApiError = require('../utils/apiError');
+const notificationService = require('../services/notification.service');
 
 function buildFullName(user) {
   return [user.prenom, user.nom].filter(Boolean).join(' ').trim();
@@ -54,6 +55,18 @@ function serializeMembershipRequest(request) {
   };
 }
 
+function serializeClubStudent(student) {
+  return {
+    id: student._id.toString(),
+    nom: student.nom || '',
+    prenom: student.prenom || '',
+    email: student.email || '',
+    avatar: student.avatarUrl || null,
+    filiere: student.filiere || null,
+    niveau: student.niveau || null,
+  };
+}
+
 async function listClubs(req, res, next) {
   try {
     const clubs = await Club.find({}).sort({ nom: 1 });
@@ -62,6 +75,37 @@ async function listClubs(req, res, next) {
       success: true,
       data: {
         items: clubs.map(serializeClub),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function listClubStudents(req, res, next) {
+  try {
+    const { clubId } = req.params;
+
+    if (!req.user?.clubId || String(req.user.clubId) !== String(clubId)) {
+      throw new ApiError(403, 'Accès refusé à cette liste d’étudiants');
+    }
+
+    const club = await Club.findById(clubId)
+      .populate('membreIds', 'nom prenom email role niveau filiere avatarUrl')
+      .select('membreIds');
+
+    if (!club) {
+      throw new ApiError(404, 'Club introuvable');
+    }
+
+    const students = Array.isArray(club.membreIds)
+      ? club.membreIds.filter((member) => member && member.role === 'etudiant').map(serializeClubStudent)
+      : [];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: students,
       },
     });
   } catch (error) {
@@ -107,6 +151,28 @@ async function requestMembership(req, res, next) {
       memberId: userId,
       status: 'pending',
     });
+
+    try {
+      const [member, clubUser] = await Promise.all([
+        Utilisateur.findById(userId),
+        Utilisateur.findOne({ role: 'club', clubId: club._id }),
+      ]);
+
+      if (clubUser) {
+        const memberName = buildFullName(member) || member?.email || 'Un étudiant';
+
+        await notificationService.createNotification(
+          clubUser._id.toString(),
+          'membership_request',
+          'Nouvelle demande d\'adhésion',
+          `${memberName} a demandé à rejoindre le club "${club.nom}".`,
+          request._id,
+          'membership'
+        );
+      }
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
+    }
 
     return res.status(201).json({
       success: true,
@@ -200,10 +266,36 @@ async function resolveMembershipRequest(req, res, next) {
         .populate('memberId', 'email nom prenom role createdAt')
         .populate('resolvedBy', 'email nom prenom role');
 
+      try {
+        await notificationService.createNotification(
+          request.memberId._id.toString(),
+          'membership_approved',
+          'Demande d\'adhésion acceptée',
+          `Votre demande d'adhésion au club "${request.clubId.nom}" a été acceptée.`,
+          request._id,
+          'membership'
+        );
+      } catch (notifError) {
+        console.error('Erreur lors de la création de la notification:', notifError);
+      }
+
       return res.status(200).json({
         success: true,
         data: serializeMembershipRequest(updatedRequest),
       });
+    }
+
+    try {
+      await notificationService.createNotification(
+        request.memberId._id.toString(),
+        'membership_rejected',
+        'Demande d\'adhésion refusée',
+        `Votre demande d'adhésion au club "${request.clubId.nom}" a été refusée.`,
+        request._id,
+        'membership'
+      );
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
     }
 
     await ClubMembershipRequest.deleteOne({ _id: request._id });
@@ -222,6 +314,7 @@ async function resolveMembershipRequest(req, res, next) {
 
 module.exports = {
   listClubs,
+  listClubStudents,
   requestMembership,
   listMyMembershipRequests,
   listClubMembershipRequests,

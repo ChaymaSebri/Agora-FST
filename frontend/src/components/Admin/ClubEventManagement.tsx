@@ -25,11 +25,13 @@ import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ChevronDown, ChevronUp, Mail } from 'lucide-react';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
 
 interface Event {
   id: string;
   titre: string;
   description?: string;
+  imageUrl?: string | null;
   date: string;
   lieu?: string;
   capacite?: number;
@@ -48,11 +50,14 @@ export function ClubEventManagement() {
   const [formData, setFormData] = useState({
     titre: '',
     description: '',
+    imageUrl: '',
     date: '',
     lieu: '',
     capacite: '',
     type: 'autre',
   });
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -78,11 +83,14 @@ export function ClubEventManagement() {
     setFormData({
       titre: '',
       description: '',
+      imageUrl: '',
       date: '',
       lieu: '',
       capacite: '',
       type: 'autre',
     });
+    setPhotoFile(null);
+    setPhotoPreview(null);
     setEditingEvent(null);
   };
 
@@ -92,11 +100,14 @@ export function ClubEventManagement() {
       setFormData({
         titre: event.titre,
         description: event.description || '',
+        imageUrl: event.imageUrl || '',
         date: event.date,
         lieu: event.lieu || '',
         capacite: event.capacite?.toString() || '',
         type: event.type,
       });
+      setPhotoPreview(event.imageUrl || null);
+      setPhotoFile(null);
     } else {
       resetForm();
     }
@@ -114,9 +125,15 @@ export function ClubEventManagement() {
     }
 
     try {
+      let uploadedImageUrl = formData.imageUrl;
+      if (photoFile) {
+        uploadedImageUrl = await uploadImageToCloudinary(photoFile);
+      }
+
       if (editingEvent) {
         await clubDashboardApi.updateClubEvent(editingEvent.id, {
           ...formData,
+          imageUrl: uploadedImageUrl || undefined,
           capacite: formData.capacite ? parseInt(formData.capacite) : undefined,
         });
         toast({
@@ -126,6 +143,7 @@ export function ClubEventManagement() {
       } else {
         await clubDashboardApi.createClubEvent({
           ...formData,
+          imageUrl: uploadedImageUrl || undefined,
           capacite: formData.capacite ? parseInt(formData.capacite) : undefined,
         });
         toast({
@@ -208,6 +226,23 @@ export function ClubEventManagement() {
                     placeholder="Description de l'événement"
                   />
                 </div>
+                <div>
+                  <label className="text-sm font-medium">Photo (optionnel)</label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setPhotoFile(file);
+                      setPhotoPreview(file ? URL.createObjectURL(file) : formData.imageUrl || null);
+                    }}
+                  />
+                  {photoPreview ? (
+                    <div className="mt-2 overflow-hidden rounded-md border border-border">
+                      <img src={photoPreview} alt="Aperçu événement" className="h-36 w-full object-cover" />
+                    </div>
+                  ) : null}
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Date *</label>
@@ -279,6 +314,11 @@ export function ClubEventManagement() {
             events.map((event) => (
               <Card key={event.id} className="border hover:shadow-md transition">
                 <CardContent className="pt-4">
+                  {event.imageUrl ? (
+                    <div className="mb-3 overflow-hidden rounded-md">
+                      <img src={event.imageUrl} alt={event.titre} className="h-44 w-full object-cover" />
+                    </div>
+                  ) : null}
                   {/* Event Header */}
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { Evenement, ParticipationEvenement, Utilisateur, Club, Competence } = require('../models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club, Competence, EventParticipationRequest } = require('../models');
+const notificationService = require('../services/notification.service');
 
 const EVENT_TYPES = ['conference', 'atelier', 'hackathon', 'sortie', 'autre'];
 const ACTIVE_PARTICIPATION_STATUSES = ['inscrit', 'confirme', 'present'];
@@ -81,6 +82,7 @@ function normalizeEvent(doc, participantsCount = 0) {
       : [],
     coOrganizerClubIds,
     coOrganizerClubNames,
+    imageUrl: source.imageUrl || null,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
   };
@@ -299,6 +301,10 @@ function validateEventPayload(payload, { partial = false } = {}) {
 
   if (payload.description !== undefined && payload.description !== null && typeof payload.description !== 'string') {
     errors.push('description must be a string');
+  }
+
+  if (payload.imageUrl !== undefined && payload.imageUrl !== null && typeof payload.imageUrl !== 'string') {
+    errors.push('imageUrl must be a string');
   }
 
   if (payload.lieu !== undefined) {
@@ -532,6 +538,7 @@ async function createEvent(req, res, next) {
       clubId: req.user.clubId,
       competenceIds,
       coOrganizerClubIds,
+      imageUrl: typeof payload.imageUrl === 'string' ? payload.imageUrl.trim() : undefined,
     });
 
     return sendSuccess(res, 201, {
@@ -584,7 +591,7 @@ async function updateEvent(req, res, next) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
 
-    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds', 'competenceIds'];
+    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds', 'competenceIds', 'imageUrl'];
     const update = {};
     updatableFields.forEach((field) => {
       if (payload[field] !== undefined) {
@@ -598,6 +605,14 @@ async function updateEvent(req, res, next) {
 
     if (update.lieu && typeof update.lieu === 'string') {
       update.lieu = update.lieu.trim();
+    }
+
+    if (update.imageUrl !== undefined) {
+      if (update.imageUrl === null) {
+        update.imageUrl = undefined;
+      } else if (typeof update.imageUrl === 'string') {
+        update.imageUrl = update.imageUrl.trim();
+      }
     }
 
     if (update.date) {
@@ -1069,6 +1084,153 @@ async function listParticipations(req, res, next) {
   }
 }
 
+// ============================================================================
+// EVENT PARTICIPATION REQUESTS
+// ============================================================================
+
+async function requestEventParticipation(req, res, next) {
+  try {
+    const { id: eventId } = req.params;
+    const { message } = req.body;
+    const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    const event = await Evenement.findById(eventId).populate('clubId');
+    if (!event) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    // Prevent already registered users from requesting
+    const existingParticipation = await ParticipationEvenement.findOne({ evenementId: eventId, utilisateurId: userId });
+    if (existingParticipation && ['inscrit', 'confirme', 'present'].includes(existingParticipation.statut)) {
+      return sendError(res, 400, ERROR_CODES.ALREADY_REGISTERED, 'You are already registered for this event');
+    }
+
+    // Prevent duplicate pending requests
+    const existingRequest = await EventParticipationRequest.findOne({ evenementId: eventId, utilisateurId: userId, statut: { $in: ['en_attente', 'confirme'] } });
+    if (existingRequest) {
+      return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, 'You already have a pending or confirmed request for this event');
+    }
+
+    const request = new EventParticipationRequest({
+      evenementId: eventId,
+      utilisateurId: userId,
+      clubId: event.clubId._id || event.clubId,
+      message,
+      statut: 'en_attente',
+    });
+
+    await request.save();
+
+    // Notify the club
+    try {
+      const user = await Utilisateur.findById(userId);
+      const userName = user ? `${user.prenom} ${user.nom}` : 'Un utilisateur';
+      const clubId = event.clubId._id ? event.clubId._id.toString() : String(event.clubId);
+
+      await notificationService.createNotification(
+        clubId,
+        'participation_request',
+        'Demande de participation à un événement',
+        `${userName} a demandé à participer à l'événement "${event.titre}".${message ? ` Message: ${message}` : ''}`,
+        request._id,
+        'participation'
+      );
+    } catch (err) {
+      console.error('Erreur lors de la création de la notification pour le club:', err);
+    }
+
+    return sendSuccess(res, 201, {
+      id: request._id.toString(),
+      evenementId: eventId,
+      statut: request.statut,
+      dateRequete: request.dateRequete,
+    });
+  } catch (error) {
+    console.error(error);
+    return sendError(res, 500, ERROR_CODES.INTERNAL_SERVER_ERROR, 'Unexpected error while creating participation request');
+  }
+}
+
+async function respondToParticipationRequest(req, res, next) {
+  try {
+    const { id: eventId, requestId } = req.params;
+    const { statut } = req.body; // expected 'confirme' or 'annule'
+
+    if (!['confirme', 'annule'].includes(statut)) {
+      return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, 'Invalid statut');
+    }
+
+    const request = await EventParticipationRequest.findOne({ _id: requestId, evenementId: eventId }).populate('utilisateurId').populate('clubId');
+    if (!request) {
+      return sendError(res, 404, ERROR_CODES.PARTICIPATION_NOT_FOUND, 'Request not found');
+    }
+
+    if (request.statut !== 'en_attente') {
+      return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, 'Request already processed');
+    }
+
+    // Only the owning club or event organizer can respond
+    const event = await Evenement.findById(eventId);
+    if (!isEventOwnedByRequesterClub(event, req) && String(event.organisateurId) !== String(req.user._id)) {
+      return sendError(res, 403, ERROR_CODES.FORBIDDEN, 'Not allowed to respond to this request');
+    }
+
+    request.statut = statut;
+    request.dateReponse = new Date();
+    await request.save();
+
+    // If confirmed, create a participation record
+    if (statut === 'confirme') {
+      try {
+        const existing = await ParticipationEvenement.findOne({ evenementId: eventId, utilisateurId: request.utilisateurId._id });
+        if (!existing) {
+          await ParticipationEvenement.create({
+            evenementId: eventId,
+            utilisateurId: request.utilisateurId._id,
+            statut: 'confirme',
+          });
+
+          await Evenement.updateOne({ _id: eventId }, { $inc: { participantsCount: 1 } });
+        }
+      } catch (err) {
+        console.error('Erreur lors de la création de la participation après confirmation:', err);
+      }
+    }
+
+    // Notify the user about the decision
+    try {
+      const notificationType = statut === 'confirme' ? 'participation_approved' : 'participation_rejected';
+      const notificationMessage = statut === 'confirme'
+        ? `Votre demande de participation à l'événement "${event.titre}" a été acceptée.`
+        : `Votre demande de participation à l'événement "${event.titre}" a été refusée.`;
+
+      await notificationService.createNotification(
+        request.utilisateurId._id.toString(),
+        notificationType,
+        `Réponse à votre demande de participation`,
+        notificationMessage,
+        request._id,
+        'participation'
+      );
+    } catch (err) {
+      console.error('Erreur lors de la notification de l utilisateur:', err);
+    }
+
+    return sendSuccess(res, 200, {
+      id: request._id.toString(),
+      statut: request.statut,
+      dateReponse: request.dateReponse,
+    });
+  } catch (error) {
+    console.error(error);
+    return sendError(res, 500, ERROR_CODES.INTERNAL_SERVER_ERROR, 'Unexpected error while responding to request');
+  }
+}
+
 module.exports = {
   listEvents,
   getEventById,
@@ -1079,4 +1241,6 @@ module.exports = {
   deleteParticipation,
   listMyParticipations,
   listParticipations,
+  requestEventParticipation,
+  respondToParticipationRequest,
 };

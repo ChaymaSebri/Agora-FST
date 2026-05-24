@@ -6,6 +6,10 @@ import { Search, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useStudentParticipationRequests } from "@/hooks/useParticipationRequests";
 import {
   Select,
   SelectContent,
@@ -18,6 +22,7 @@ interface Project {
   _id: string;
   titre: string;
   description?: string;
+  imageUrl?: string | null;
   statut: "en_cours" | "termine" | "annule" | "en_attente";
   progression: number;
   deadline: string;
@@ -25,14 +30,25 @@ interface Project {
   etudiantIds?: string[];
 }
 
+const statusLabels: Record<string, string> = {
+  pending: 'En attente',
+  accepted: 'Acceptée',
+  rejected: 'Refusée',
+  cancelled: 'Annulée',
+};
+
 const Projects = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { requests, fetchMyRequests, requestParticipation } = useStudentParticipationRequests();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("tous");
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [requestProjectId, setRequestProjectId] = useState<string | null>(null);
+  const [requestMessage, setRequestMessage] = useState("");
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -54,6 +70,12 @@ const Projects = () => {
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    if (user?.role === 'etudiant') {
+      void fetchMyRequests();
+    }
+  }, [user?.role, fetchMyRequests]);
+
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
       project.titre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -70,6 +92,37 @@ const Projects = () => {
     { value: "termine", label: "Terminé" },
     { value: "annule", label: "Annulé" },
   ];
+
+  const getRequestForProject = (projectId: string) =>
+    requests.find((request) => request.project?.id === projectId || request.projet?.id === projectId);
+
+  const openRequestDialog = (projectId: string) => {
+    setRequestProjectId(projectId);
+    setRequestMessage('');
+    setRequestDialogOpen(true);
+  };
+
+  const handleSendRequest = async () => {
+    if (!requestProjectId) return;
+
+    const success = await requestParticipation(requestProjectId, requestMessage.trim() || undefined);
+    if (success) {
+      toast({
+        title: 'Succès',
+        description: 'Demande envoyée',
+      });
+      setRequestDialogOpen(false);
+      setRequestProjectId(null);
+      setRequestMessage('');
+      await fetchMyRequests();
+    } else {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'envoyer la demande',
+        variant: 'destructive',
+      });
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8 pt-20">
@@ -122,6 +175,11 @@ const Projects = () => {
               key={project._id}
               className="border rounded-lg p-4 hover:shadow-lg transition-shadow"
             >
+              {project.imageUrl ? (
+                <div className="mb-3 overflow-hidden rounded-md">
+                  <img src={project.imageUrl} alt={project.titre} className="h-40 w-full object-cover" />
+                </div>
+              ) : null}
               <h3 className="font-bold mb-2">{project.titre}</h3>
               <p className="text-sm text-muted-foreground mb-3">
                 {project.description}
@@ -136,6 +194,54 @@ const Projects = () => {
                   style={{ width: `${project.progression}%` }}
                 />
               </div>
+              {user?.role === 'etudiant' && (
+                <div className="mt-4 space-y-3">
+                  {(() => {
+                    const existingRequest = getRequestForProject(project._id);
+                    return existingRequest ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="outline">
+                          Demande: {statusLabels[existingRequest.status] || existingRequest.status}
+                        </Badge>
+                        <Button variant="outline" disabled>
+                          Demander à participer
+                        </Button>
+                      </div>
+                    ) : (
+                      <Dialog open={requestDialogOpen && requestProjectId === project._id} onOpenChange={setRequestDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button className="w-full" onClick={() => openRequestDialog(project._id)}>
+                            Demander à participer
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Demander à participer</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                              Ajouter un message optionnel pour le club organisateur.
+                            </p>
+                            <Textarea
+                              value={requestMessage}
+                              onChange={(e) => setRequestMessage(e.target.value)}
+                              placeholder="Message optionnel..."
+                            />
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" onClick={() => setRequestDialogOpen(false)}>
+                                Annuler
+                              </Button>
+                              <Button onClick={handleSendRequest}>
+                                Envoyer la demande
+                              </Button>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           ))}
         </div>

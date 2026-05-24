@@ -26,6 +26,10 @@ interface Event {
   organisateurId: {
     nom: string;
     prenom: string;
+    email?: string;
+  };
+  clubId?: {
+    nom?: string;
   };
 }
 
@@ -102,6 +106,13 @@ export default function EventManagement() {
   const isFull = (event: Event) => event.participantsCount >= event.capacite;
   const getCapacityPercentage = (event: Event) =>
     Math.round((event.participantsCount / event.capacite) * 100);
+
+  const getOrganizerName = (event: Event) => {
+    const personName = `${event.organisateurId?.prenom || ''} ${event.organisateurId?.nom || ''}`.trim();
+    if (personName) return personName;
+    if (event.clubId?.nom) return event.clubId.nom;
+    return event.organisateurId?.email || 'Organisateur inconnu';
+  };
 
   return (
     <div className="space-y-6">
@@ -200,7 +211,7 @@ export default function EventManagement() {
                       </div>
                     </td>
                     <td className="py-4 px-6 text-gray-600">
-                      {event.organisateurId?.prenom} {event.organisateurId?.nom}
+                      {getOrganizerName(event)}
                     </td>
                     <td className="py-4 px-6">
                       <button

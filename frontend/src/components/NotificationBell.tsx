@@ -17,14 +17,24 @@ export function NotificationBell() {
     useNotifications();
   const [isOpen, setIsOpen] = useState(false);
 
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open && unreadCount > 0) {
+      markAllAsRead();
+    }
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'invitation_event':
       case 'invitation_project':
+      case 'membership_request':
         return '📧';
       case 'invitation_accepted':
+      case 'membership_approved':
         return '✅';
       case 'invitation_refused':
+      case 'membership_rejected':
         return '❌';
       case 'event_updated':
       case 'project_updated':
@@ -38,10 +48,13 @@ export function NotificationBell() {
     switch (type) {
       case 'invitation_event':
       case 'invitation_project':
+      case 'membership_request':
         return 'bg-blue-50';
       case 'invitation_accepted':
+      case 'membership_approved':
         return 'bg-green-50';
       case 'invitation_refused':
+      case 'membership_rejected':
         return 'bg-red-50';
       case 'event_updated':
       case 'project_updated':
@@ -52,7 +65,7 @@ export function NotificationBell() {
   };
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -98,7 +111,7 @@ export function NotificationBell() {
                 key={notification.id}
                 className={cn(
                   'p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors',
-                  !notification.lue && 'bg-blue-50/50'
+                  notification.etat === 'ferme' && 'bg-blue-50/50'
                 )}
               >
                 <div className="flex items-start gap-3">
@@ -121,13 +134,13 @@ export function NotificationBell() {
                   </div>
 
                   <div className="flex gap-1 ml-2">
-                    {!notification.lue && (
+                    {notification.etat === 'ferme' && (
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0"
                         onClick={() => markAsRead(notification.id)}
-                        title="Marquer comme lu"
+                        title="Marquer comme ouvert"
                       >
                         <Check className="h-4 w-4" />
                       </Button>

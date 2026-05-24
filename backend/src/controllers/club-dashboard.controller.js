@@ -183,6 +183,7 @@ async function listClubEvents(req, res, next) {
           id: event._id.toString(),
           titre: event.titre,
           description: event.description,
+          imageUrl: event.imageUrl || null,
           date: event.date,
           lieu: event.lieu,
           capacite: event.capacite,
@@ -209,7 +210,7 @@ async function listClubEvents(req, res, next) {
 
 async function createClubEvent(req, res, next) {
   try {
-    const { titre, description, date, lieu, capacite, type } = req.body;
+    const { titre, description, date, lieu, capacite, type, imageUrl } = req.body;
 
     if (!titre || !date) {
       return next(new ApiError(400, 'Le titre et la date sont obligatoires'));
@@ -218,6 +219,7 @@ async function createClubEvent(req, res, next) {
     const event = new Evenement({
       titre,
       description,
+      imageUrl,
       date: new Date(date),
       lieu,
       capacite,
@@ -236,6 +238,7 @@ async function createClubEvent(req, res, next) {
         id: event._id.toString(),
         titre: event.titre,
         description: event.description,
+        imageUrl: event.imageUrl || null,
         date: event.date,
         lieu: event.lieu,
         capacite: event.capacite,
@@ -251,7 +254,7 @@ async function createClubEvent(req, res, next) {
 async function updateClubEvent(req, res, next) {
   try {
     const { id } = req.params;
-    const { titre, description, date, lieu, capacite, type } = req.body;
+    const { titre, description, date, lieu, capacite, type, imageUrl } = req.body;
 
     const event = await Evenement.findOne({
       _id: id,
@@ -268,6 +271,7 @@ async function updateClubEvent(req, res, next) {
     if (lieu) event.lieu = lieu;
     if (capacite) event.capacite = capacite;
     if (type) event.type = type;
+    if (imageUrl !== undefined) event.imageUrl = imageUrl;
 
     await event.save();
 
@@ -278,6 +282,7 @@ async function updateClubEvent(req, res, next) {
         id: event._id.toString(),
         titre: event.titre,
         description: event.description,
+        imageUrl: event.imageUrl || null,
         date: event.date,
         lieu: event.lieu,
         capacite: event.capacite,
@@ -511,8 +516,10 @@ async function listClubProjects(req, res, next) {
 
     const projectsWithStats = projects.map(p => ({
       id: p._id.toString(),
+      clubId: p.clubId ? p.clubId.toString() : req.user.clubId?.toString(),
       titre: p.titre,
       description: p.description,
+      imageUrl: p.imageUrl || null,
       objectif: p.objectif,
       dateDebut: p.dateDebut,
       deadline: p.deadline,
@@ -543,7 +550,7 @@ async function listClubProjects(req, res, next) {
 
 async function createClubProject(req, res, next) {
   try {
-    const { titre, description, objectif, dateDebut, deadline, enseignantId } = req.body;
+    const { titre, description, objectif, dateDebut, deadline, enseignantId, imageUrl } = req.body;
 
     if (!titre || !deadline) {
       return next(new ApiError(400, 'Le titre et la deadline sont obligatoires'));
@@ -563,6 +570,7 @@ async function createClubProject(req, res, next) {
     const project = new Projet({
       titre,
       description,
+      imageUrl,
       objectif,
       dateDebut: dateDebut ? new Date(dateDebut) : new Date(),
       deadline: new Date(deadline),
@@ -581,6 +589,7 @@ async function createClubProject(req, res, next) {
         id: project._id.toString(),
         titre: project.titre,
         description: project.description,
+        imageUrl: project.imageUrl || null,
         objectif: project.objectif,
         deadline: project.deadline,
         statut: project.statut,
@@ -594,7 +603,7 @@ async function createClubProject(req, res, next) {
 async function updateClubProject(req, res, next) {
   try {
     const { projectId } = req.params;
-    const { titre, description, objectif, dateDebut, deadline, statut, progression } = req.body;
+    const { titre, description, objectif, dateDebut, deadline, statut, progression, imageUrl } = req.body;
 
     const project = await Projet.findOne({
       _id: projectId,
@@ -612,6 +621,7 @@ async function updateClubProject(req, res, next) {
     if (deadline) project.deadline = new Date(deadline);
     if (statut) project.statut = statut;
     if (typeof progression === 'number') project.progression = progression;
+    if (imageUrl !== undefined) project.imageUrl = imageUrl;
 
     await project.save();
 
@@ -621,6 +631,7 @@ async function updateClubProject(req, res, next) {
       data: {
         id: project._id.toString(),
         titre: project.titre,
+        imageUrl: project.imageUrl || null,
         statut: project.statut,
         progression: project.progression,
       },
@@ -692,7 +703,7 @@ async function getProjectParticipants(req, res, next) {
 async function addProjectParticipant(req, res, next) {
   try {
     const { projectId } = req.params;
-    const { utilisateurId } = req.body;
+    const utilisateurId = req.body.utilisateurId || req.body.studentId;
 
     if (!utilisateurId) {
       return next(new ApiError(400, 'L\'ID de l\'utilisateur est obligatoire'));
@@ -701,10 +712,15 @@ async function addProjectParticipant(req, res, next) {
     const project = await Projet.findOne({
       _id: projectId,
       clubId: req.user.clubId,
-    });
+    }).populate('etudiantIds', '_id');
 
     if (!project) {
       return next(new ApiError(404, 'Projet non trouvé'));
+    }
+
+    const club = await Club.findById(req.user.clubId).populate('membreIds', '_id role');
+    if (!club) {
+      return next(new ApiError(404, 'Club non trouvé'));
     }
 
     const user = await Utilisateur.findOne({
@@ -716,15 +732,21 @@ async function addProjectParticipant(req, res, next) {
       return next(new ApiError(404, 'Étudiant non trouvé'));
     }
 
-    // Vérifier si déjà participant
-    if (project.etudiantIds.includes(utilisateurId)) {
-      return res.status(200).json({
-        success: true,
-        message: 'Étudiant déjà participant au projet',
-      });
+    const isClubMember = Array.isArray(club.membreIds)
+      && club.membreIds.some((member) => String(member._id || member) === String(user._id) && member.role === 'etudiant');
+
+    if (!isClubMember) {
+      return next(new ApiError(403, 'Cet étudiant n’appartient pas au club créateur du projet'));
     }
 
-    project.etudiantIds.push(utilisateurId);
+    const alreadyParticipant = Array.isArray(project.etudiantIds)
+      && project.etudiantIds.some((member) => String(member._id || member) === String(user._id));
+
+    if (alreadyParticipant) {
+      return next(new ApiError(409, 'Étudiant déjà participant au projet'));
+    }
+
+    project.etudiantIds.push(user._id);
     await project.save();
 
     return res.status(200).json({
@@ -1113,7 +1135,8 @@ async function respondToParticipationRequest(req, res, next) {
     }
 
     // Mettre à jour le statut de la demande
-    participationRequest.statut = statut;
+    participationRequest.status = statut === 'accepte' ? 'accepted' : 'rejected';
+    participationRequest.statut = statut === 'accepte' ? 'confirme' : 'annule';
     participationRequest.dateReponse = new Date();
     await participationRequest.save();
 

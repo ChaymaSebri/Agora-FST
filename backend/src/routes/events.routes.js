@@ -13,4 +13,8 @@ router.post('/:id/participations', authenticate, eventsController.createParticip
 router.delete('/:id/participations/:utilisateurId', authenticate, eventsController.deleteParticipation);
 router.get('/:id/participations', authenticate, eventsController.listParticipations);
 
+// Participation requests (students can request to participate; clubs validate)
+router.post('/:id/participation-requests', authenticate, eventsController.requestEventParticipation);
+router.patch('/:id/participation-requests/:requestId/respond', authenticate, eventsController.respondToParticipationRequest);
+
 module.exports = router;

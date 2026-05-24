@@ -10,12 +10,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { FolderKanban, Loader2, Calendar, ArrowLeft } from "lucide-react";
 import api from "@/services/api";
+import { uploadImageToCloudinary } from "@/lib/cloudinary";
 
 const CreateProject = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [titre, setTitre] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -35,10 +38,16 @@ const CreateProject = () => {
 
     try {
       setIsLoading(true);
+
+      let imageUrl: string | undefined;
+      if (photoFile) {
+        imageUrl = await uploadImageToCloudinary(photoFile);
+      }
       
       const response = await api.post("/projets", {
         titre,
         description,
+        imageUrl,
         deadline: new Date(deadline).toISOString(),
         statut: "en_attente",
         progression: 0,
@@ -121,6 +130,25 @@ const CreateProject = () => {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={5}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="projectPhoto">Photo du projet (optionnel)</Label>
+              <Input
+                id="projectPhoto"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setPhotoFile(file);
+                  setPhotoPreview(file ? URL.createObjectURL(file) : null);
+                }}
+              />
+              {photoPreview ? (
+                <div className="overflow-hidden rounded-md border border-border">
+                  <img src={photoPreview} alt="Aperçu projet" className="h-48 w-full object-cover" />
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2">

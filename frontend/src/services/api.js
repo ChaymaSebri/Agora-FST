@@ -96,6 +96,7 @@ function toUiEvent(item) {
     participantsCount,
     maxAttendees: Number(item.capacite || 0),
     type: item.type || 'autre',
+    imageUrl: item.imageUrl || null,
     organisateurId: item.organisateurId,
     clubId: item.clubId,
     clubName: item.clubName || null,
@@ -245,6 +246,7 @@ export async function createEvent(payload) {
   const body = {
     titre: payload.title,
     description: payload.description,
+    imageUrl: payload.imageUrl,
     date: toApiDate(payload.date, payload.time),
     lieu: payload.location,
     capacite: Number(payload.maxAttendees),
@@ -265,6 +267,7 @@ export async function updateEvent(id, payload) {
   const body = {
     titre: payload.title,
     description: payload.description,
+    imageUrl: payload.imageUrl,
     date: toApiDate(payload.date, payload.time),
     lieu: payload.location,
     capacite: Number(payload.maxAttendees),
@@ -333,6 +336,25 @@ export async function cancelEventParticipation(eventId, utilisateurId) {
   try {
     const response = await api.delete(`/events/${eventId}/participations/${utilisateurId}`);
     return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchLatestNews(params = {}) {
+  try {
+    const query = {
+      type: params.type,
+      limit: params.limit,
+    };
+
+    const response = await api.get('/news', { params: query });
+    const data = extractResponse(response);
+
+    return {
+      items: Array.isArray(data?.items) ? data.items : [],
+      filters: data?.filters || { type: ['project', 'event', 'update'], limit: 6 },
+    };
   } catch (error) {
     rethrowApiError(error);
   }

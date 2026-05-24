@@ -2,6 +2,25 @@ const router = require('express').Router();
 const { Projet, Utilisateur } = require('../models');
 const { authenticate } = require('../middlewares/auth.middleware');
 const ApiError = require('../utils/apiError');
+const projectTaskService = require('../services/project-task.service');
+
+router.get('/my-participations', authenticate, async (req, res, next) => {
+  try {
+    const projects = await projectTaskService.getMyParticipatingProjects(req.user);
+    res.json({ success: true, data: { projects } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/progress', authenticate, async (req, res, next) => {
+  try {
+    const data = await projectTaskService.getProjectProgress(req.params.id, req.user);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Get all projects with pagination and filtering
 router.get('/', async (req, res, next) => {
@@ -61,7 +80,7 @@ router.get('/:id', async (req, res, next) => {
 // Create new project (requires authentication)
 router.post('/', authenticate, async (req, res, next) => {
   try {
-    const { titre, description, objectif, deadline, statut, progression } = req.body;
+    const { titre, description, objectif, deadline, statut, progression, imageUrl } = req.body;
 
     if (!titre || !deadline) {
       return next(new ApiError('Titre et deadline sont obligatoires', { status: 400 }));
@@ -70,6 +89,7 @@ router.post('/', authenticate, async (req, res, next) => {
     const projet = await Projet.create({
       titre,
       description,
+      imageUrl,
       objectif,
       deadline: new Date(deadline),
       statut: statut || 'en_attente',
@@ -88,7 +108,7 @@ router.post('/', authenticate, async (req, res, next) => {
 // Update project (requires authentication)
 router.put('/:id', authenticate, async (req, res, next) => {
   try {
-    const { titre, description, objectif, deadline, statut, progression } = req.body;
+    const { titre, description, objectif, deadline, statut, progression, imageUrl } = req.body;
     const projet = await Projet.findById(req.params.id);
 
     if (!projet) {
@@ -107,6 +127,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
     if (deadline) projet.deadline = new Date(deadline);
     if (statut) projet.statut = statut;
     if (progression !== undefined) projet.progression = Math.min(100, Math.max(0, progression));
+    if (imageUrl !== undefined) projet.imageUrl = imageUrl;
 
     await projet.save();
     await projet.populate('enseignantId', 'nom prenom email');

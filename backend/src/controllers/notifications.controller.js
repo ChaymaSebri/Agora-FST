@@ -26,7 +26,9 @@ async function getNotifications(req, res, next) {
           message: n.message,
           relatedId: n.relatedId?.toString(),
           relatedType: n.relatedType,
+          etat: n.etat || (n.lue ? 'ouvert' : 'ferme'),
           lue: n.lue,
+          dateOuverture: n.dateOuverture,
           dateNotification: n.dateNotification,
         })),
         total,
@@ -53,7 +55,9 @@ async function getUnreadNotifications(req, res, next) {
           message: n.message,
           relatedId: n.relatedId?.toString(),
           relatedType: n.relatedType,
+          etat: n.etat || (n.lue ? 'ouvert' : 'ferme'),
           lue: n.lue,
+          dateOuverture: n.dateOuverture,
           dateNotification: n.dateNotification,
         })),
       },
@@ -98,7 +102,9 @@ async function markAsRead(req, res, next) {
       message: 'Notification marquée comme lue',
       data: {
         id: notification._id.toString(),
+        etat: notification.etat,
         lue: notification.lue,
+        dateOuverture: notification.dateOuverture,
       },
     });
   } catch (error) {
@@ -115,6 +121,46 @@ async function markAllAsRead(req, res, next) {
     return res.status(200).json({
       success: true,
       message: 'Toutes les notifications ont été marquées comme lues',
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function markAsOpened(req, res, next) {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user._id.toString();
+
+    const notification = await notificationService.markAsOpened(notificationId, userId);
+
+    if (!notification) {
+      return next(new ApiError(404, 'Notification non trouvée'));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Notification marquée comme ouverte',
+      data: {
+        id: notification._id.toString(),
+        etat: notification.etat,
+        dateOuverture: notification.dateOuverture,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function markAllAsOpened(req, res, next) {
+  try {
+    const userId = req.user._id.toString();
+
+    await notificationService.markAllAsOpened(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Toutes les notifications ont été marquées comme ouvertes',
     });
   } catch (error) {
     return next(error);
@@ -148,4 +194,6 @@ module.exports = {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  markAsOpened,
+  markAllAsOpened,
 };

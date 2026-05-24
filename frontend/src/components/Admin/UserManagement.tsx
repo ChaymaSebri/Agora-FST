@@ -19,6 +19,10 @@ interface User {
   prenom: string;
   email: string;
   role: 'etudiant' | 'enseignant' | 'club' | 'admin';
+  clubId?: {
+    _id: string;
+    nom: string;
+  };
   niveau?: string;
   filiere?: string;
   grade?: string;
@@ -107,6 +111,15 @@ export default function UserManagement() {
     }
   };
 
+  const getDisplayName = (user: User) => {
+    if (user.role === 'club') {
+      return user.clubId?.nom || user.email;
+    }
+
+    const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
+    return fullName || user.email;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex gap-4 mb-6">
@@ -169,9 +182,7 @@ export default function UserManagement() {
                   <tr key={user._id} className="border-b hover:bg-gray-50">
                     <td className="py-4 px-6">
                       <div>
-                        <p className="font-medium">
-                          {user.prenom} {user.nom}
-                        </p>
+                        <p className="font-medium">{getDisplayName(user)}</p>
                         <p className="text-xs text-gray-500">
                           {new Date(user.createdAt).toLocaleDateString('fr-FR')}
                         </p>

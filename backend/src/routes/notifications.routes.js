@@ -30,6 +30,12 @@ router.patch('/:notificationId/read', notificationsController.markAsRead);
 // Marquer toutes les notifications comme lues
 router.patch('/read/all', notificationsController.markAllAsRead);
 
+// Marquer une notification comme ouverte (etat: 'ouvert' sans changer 'lue')
+router.patch('/:notificationId/open', notificationsController.markAsOpened);
+
+// Marquer toutes les notifications comme ouvertes
+router.patch('/open/all', notificationsController.markAllAsOpened);
+
 // ============================================================================
 // DELETE
 // ============================================================================

@@ -215,6 +215,7 @@ const projetSchema = new Schema(
     etudiantIds: [{ type: Schema.Types.ObjectId, ref: 'Utilisateur' }],
     clubId: { type: Schema.Types.ObjectId, ref: 'Club' },
     competenceIds: [{ type: Schema.Types.ObjectId, ref: 'Competence' }],
+    imageUrl: { type: String, trim: true },
   },
   { timestamps: true }
 );
@@ -269,6 +270,7 @@ const evenementSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'Club',
     }],
+    imageUrl: { type: String, trim: true },
   },
   { timestamps: true }
 );
@@ -421,6 +423,9 @@ const notificationSchema = new Schema(
         'participation_request',
         'participation_approved',
         'participation_rejected',
+        'membership_request',
+        'membership_approved',
+        'membership_rejected',
       ],
       required: true,
     },
@@ -432,25 +437,150 @@ const notificationSchema = new Schema(
     },
     relatedType: {
       type: String,
-      enum: ['event', 'project', 'invitation', 'participation'],
+      enum: ['event', 'project', 'invitation', 'participation', 'membership'],
+    },
+    etat: {
+      type: String,
+      enum: ['ferme', 'ouvert'],
+      default: 'ferme',
     },
     lue: { type: Boolean, default: false },
+    dateOuverture: { type: Date, default: null },
     dateNotification: { type: Date, default: Date.now },
   },
   { timestamps: true }
 );
 
 notificationSchema.index({ utilisateurId: 1, lue: 1 });
+notificationSchema.index({ utilisateurId: 1, etat: 1 });
 notificationSchema.index({ utilisateurId: 1, dateNotification: -1 });
 
 const projectParticipationRequestSchema = new Schema(
   {
-    projetId: {
+    projectId: {
       type: Schema.Types.ObjectId,
       ref: 'Projet',
       required: true,
     },
+    projetId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Projet',
+    },
+    studentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
     etudiantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+    },
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'rejected', 'cancelled'],
+      default: 'pending',
+    },
+    statut: {
+      type: String,
+      enum: ['en_attente', 'confirme', 'annule'],
+      default: 'en_attente',
+    },
+    message: { type: String },
+    dateRequete: { type: Date, default: Date.now },
+    dateReponse: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+projectParticipationRequestSchema.index(
+  { projectId: 1, studentId: 1 },
+  { unique: true }
+);
+projectParticipationRequestSchema.index(
+  { projetId: 1, etudiantId: 1 },
+  { unique: true, sparse: true }
+);
+projectParticipationRequestSchema.index({ studentId: 1, status: 1 });
+projectParticipationRequestSchema.index({ clubId: 1, statut: 1 });
+
+const projectTaskSchema = new Schema(
+  {
+    projectId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Projet',
+      required: true,
+      index: true,
+    },
+    assignedTo: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+      index: true,
+    },
+    assignedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 2,
+      maxlength: 160,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 2000,
+    },
+    role: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 120,
+    },
+    priority: {
+      type: String,
+      enum: ['low', 'medium', 'high'],
+      default: 'medium',
+    },
+    status: {
+      type: String,
+      enum: ['todo', 'in_progress', 'completed', 'blocked'],
+      default: 'todo',
+    },
+    dueDate: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+projectTaskSchema.index({ projectId: 1, status: 1 });
+projectTaskSchema.index({ projectId: 1, assignedTo: 1 });
+projectTaskSchema.index({ assignedTo: 1, status: 1 });
+
+const Notification = mongoose.model('Notification', notificationSchema);
+const ProjectParticipationRequest = mongoose.model(
+  'ProjectParticipationRequest',
+  projectParticipationRequestSchema
+);
+const ProjectTask = mongoose.model('ProjectTask', projectTaskSchema);
+
+const eventParticipationRequestSchema = new Schema(
+  {
+    evenementId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Evenement',
+      required: true,
+    },
+    utilisateurId: {
       type: Schema.Types.ObjectId,
       ref: 'Utilisateur',
       required: true,
@@ -462,7 +592,7 @@ const projectParticipationRequestSchema = new Schema(
     },
     statut: {
       type: String,
-      enum: ['en_attente', 'accepte', 'refuse'],
+      enum: ['en_attente', 'confirme', 'annule'],
       default: 'en_attente',
     },
     message: { type: String },
@@ -472,17 +602,13 @@ const projectParticipationRequestSchema = new Schema(
   { timestamps: true }
 );
 
-projectParticipationRequestSchema.index(
-  { projetId: 1, etudiantId: 1 },
-  { unique: true }
-);
-projectParticipationRequestSchema.index({ etudiantId: 1, statut: 1 });
-projectParticipationRequestSchema.index({ clubId: 1, statut: 1 });
+eventParticipationRequestSchema.index({ evenementId: 1, utilisateurId: 1 }, { unique: true });
+eventParticipationRequestSchema.index({ utilisateurId: 1, statut: 1 });
+eventParticipationRequestSchema.index({ clubId: 1, statut: 1 });
 
-const Notification = mongoose.model('Notification', notificationSchema);
-const ProjectParticipationRequest = mongoose.model(
-  'ProjectParticipationRequest',
-  projectParticipationRequestSchema
+const EventParticipationRequest = mongoose.model(
+  'EventParticipationRequest',
+  eventParticipationRequestSchema
 );
 
 module.exports = {
@@ -500,4 +626,6 @@ module.exports = {
   InvitationProjet,
   Notification,
   ProjectParticipationRequest,
+  ProjectTask,
+  EventParticipationRequest,
 };

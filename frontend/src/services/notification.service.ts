@@ -10,7 +10,9 @@ export interface Notification {
   message: string;
   relatedId?: string;
   relatedType?: string;
+  etat: 'ferme' | 'ouvert';
   lue: boolean;
+  dateOuverture?: string | null;
   dateNotification: string;
 }
 
@@ -118,7 +120,8 @@ class NotificationService {
       const response = await api.get('/notifications', {
         params: { limit, skip },
       });
-      return response.data;
+      const payload = response.data;
+      return payload?.data ?? payload;
     } catch (error) {
       console.error('Erreur lors de la récupération des notifications:', error);
       throw error;
@@ -131,7 +134,8 @@ class NotificationService {
   async getUnreadNotifications(): Promise<Notification[]> {
     try {
       const response = await api.get('/notifications/unread');
-      return response.data.notifications;
+      const payload = response.data;
+      return payload?.data?.notifications ?? payload?.notifications ?? [];
     } catch (error) {
       console.error('Erreur lors de la récupération des notifications non lues:', error);
       throw error;
@@ -144,7 +148,8 @@ class NotificationService {
   async getUnreadCount(): Promise<number> {
     try {
       const response = await api.get('/notifications/unread/count');
-      return response.data.count;
+      const payload = response.data;
+      return payload?.data?.count ?? payload?.count ?? 0;
     } catch (error) {
       console.error('Erreur lors de la récupération du nombre de notifications non lues:', error);
       throw error;
@@ -164,6 +169,18 @@ class NotificationService {
   }
 
   /**
+   * Marquer une notification comme ouverte (etat: 'ouvert') sans changer 'lue'
+   */
+  async markAsOpened(notificationId: string): Promise<void> {
+    try {
+      await api.patch(`/notifications/${notificationId}/open`);
+    } catch (error) {
+      console.error('Erreur lors du marquage de notification comme ouverte:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Marquer toutes les notifications comme lues
    */
   async markAllAsRead(): Promise<void> {
@@ -171,6 +188,18 @@ class NotificationService {
       await api.patch('/notifications/read/all');
     } catch (error) {
       console.error('Erreur lors de la marque de toutes les notifications comme lues:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Marquer toutes les notifications comme ouvertes (etat: 'ouvert') sans changer 'lue'
+   */
+  async markAllAsOpened(): Promise<void> {
+    try {
+      await api.patch('/notifications/open/all');
+    } catch (error) {
+      console.error('Erreur lors du marquage de toutes les notifications comme ouvertes:', error);
       throw error;
     }
   }
