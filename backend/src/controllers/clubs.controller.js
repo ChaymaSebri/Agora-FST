@@ -1,4 +1,4 @@
-const { Club, ClubMembershipRequest, Utilisateur } = require('../models');
+const { Club, ClubMembershipRequest, Utilisateur, Projet } = require('../models');
 const ApiError = require('../utils/apiError');
 const notificationService = require('../services/notification.service');
 
@@ -86,21 +86,50 @@ async function listClubStudents(req, res, next) {
   try {
     const { clubId } = req.params;
 
-    if (!req.user?.clubId || String(req.user.clubId) !== String(clubId)) {
+    const isAdmin = req.user?.role === 'admin';
+    const isSameClub = req.user?.role === 'club'
+      && req.user?.clubId
+      && String(req.user.clubId) === String(clubId);
+
+    if (!isAdmin && !isSameClub) {
       throw new ApiError(403, 'Accès refusé à cette liste d’étudiants');
     }
 
-    const club = await Club.findById(clubId)
-      .populate('membreIds', 'nom prenom email role niveau filiere avatarUrl')
-      .select('membreIds');
+    const [club, projectStudentIds] = await Promise.all([
+      Club.findById(clubId)
+        .populate('membreIds', 'nom prenom email role niveau filiere avatarUrl')
+        .select('membreIds'),
+      Projet.find({ clubId }).distinct('etudiantIds'),
+    ]);
 
     if (!club) {
       throw new ApiError(404, 'Club introuvable');
     }
 
-    const students = Array.isArray(club.membreIds)
-      ? club.membreIds.filter((member) => member && member.role === 'etudiant').map(serializeClubStudent)
+    const memberStudents = Array.isArray(club.membreIds)
+      ? club.membreIds
+        .filter((member) => member && ['etudiant', 'student'].includes(member.role))
+        .map(serializeClubStudent)
       : [];
+
+    const memberStudentIds = new Set(memberStudents.map((student) => student.id));
+    const fallbackIds = Array.isArray(projectStudentIds)
+      ? projectStudentIds
+        .map((id) => String(id))
+        .filter((id) => id && !memberStudentIds.has(id))
+      : [];
+
+    let projectStudents = [];
+    if (fallbackIds.length > 0) {
+      const fallbackUsers = await Utilisateur.find({
+        _id: { $in: fallbackIds },
+        role: { $in: ['etudiant', 'student'] },
+      }).select('nom prenom email role niveau filiere avatarUrl');
+
+      projectStudents = fallbackUsers.map(serializeClubStudent);
+    }
+
+    const students = [...memberStudents, ...projectStudents];
 
     return res.status(200).json({
       success: true,

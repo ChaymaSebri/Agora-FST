@@ -22,6 +22,7 @@ router.get('/projects/:id', teacherDashboardController.getProjectById);
 // ============================================================================
 
 router.get('/teacher/projects', authenticate, checkRole('enseignant'), teacherDashboardController.getTeacherProjectEncadrement);
+router.get('/teacher/events', authenticate, checkRole('enseignant'), teacherDashboardController.getTeacherEventEncadrement);
 
 // ============================================================================
 // TEACHER ONLY - Event Invitations

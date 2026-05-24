@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
-const { Evenement, ParticipationEvenement, Utilisateur, Club, Projet, Tache, InvitationEvenement, InvitationProjet } = require('../models');
+const {
+  Evenement,
+  ParticipationEvenement,
+  Utilisateur,
+  Club,
+  Projet,
+  Tache,
+  ProjectTask,
+  InvitationEvenement,
+  InvitationProjet,
+} = require('../models');
 const ApiError = require('../utils/apiError');
 
 // ============================================================================
@@ -520,10 +530,11 @@ async function listClubProjects(req, res, next) {
       deadline: p.deadline,
       statut: p.statut,
       progression: p.progression,
+      clubId: p.clubId ? p.clubId.toString() : (req.user.clubId ? String(req.user.clubId) : null),
       enseignantId: p.enseignantId ? p.enseignantId._id.toString() : null,
       enseignant: p.enseignantId
         ? `${p.enseignantId.nom} ${p.enseignantId.prenom}`
-        : 'Aucun enseignant',
+        : null,
       etudiantsCount: p.etudiantIds ? p.etudiantIds.length : 0,
       etudiants: p.etudiantIds
         ? p.etudiantIds.map(e => ({
@@ -550,6 +561,7 @@ async function listClubProjects(req, res, next) {
 async function createClubProject(req, res, next) {
   try {
     const { titre, description, objectif, dateDebut, deadline, enseignantId, imageUrl } = req.body;
+    const notificationService = require('../services/notification.service');
 
     if (!titre || !deadline) {
       return next(new ApiError(400, 'Le titre et la deadline sont obligatoires'));
@@ -573,13 +585,45 @@ async function createClubProject(req, res, next) {
       objectif,
       dateDebut: dateDebut ? new Date(dateDebut) : new Date(),
       deadline: new Date(deadline),
-      enseignantId: enseignantId || null,
+      enseignantId: null,
       clubId: req.user.clubId,
       statut: 'en_attente',
     });
 
     await project.save();
     await project.populate('enseignantId', 'nom prenom email');
+
+    if (enseignantId) {
+      try {
+        const existingInvitation = await InvitationProjet.findOne({
+          projetId: project._id,
+          enseignantId,
+        });
+
+        if (!existingInvitation) {
+          await InvitationProjet.create({
+            projetId: project._id,
+            enseignantId,
+            clubId: req.user.clubId,
+            statut: 'en_attente',
+          });
+
+          const club = await Club.findById(req.user.clubId);
+          const clubName = club ? club.nom : 'Un club';
+
+          await notificationService.createNotification(
+            enseignantId,
+            'invitation_project',
+            'Nouvelle invitation à un projet',
+            `${clubName} vous invite à encadrer le projet "${project.titre}".`,
+            project._id,
+            'project'
+          );
+        }
+      } catch (invitationError) {
+        console.error('Erreur lors de la création de l\'invitation d\'encadrement:', invitationError);
+      }
+    }
 
     return res.status(201).json({
       success: true,
@@ -592,6 +636,7 @@ async function createClubProject(req, res, next) {
         objectif: project.objectif,
         deadline: project.deadline,
         statut: project.statut,
+        teacherInvitationSent: Boolean(enseignantId),
       },
     });
   } catch (error) {
@@ -653,8 +698,11 @@ async function deleteClubProject(req, res, next) {
       return next(new ApiError(404, 'Projet non trouvé'));
     }
 
-    // Supprimer les tâches associées
-    await Tache.deleteMany({ projetId: project._id });
+    // Supprimer les tâches associées dans les deux collections (legacy + unifiée)
+    await Promise.all([
+      Tache.deleteMany({ projetId: project._id }),
+      ProjectTask.deleteMany({ projectId: project._id }),
+    ]);
     await Projet.deleteOne({ _id: project._id });
 
     return res.status(200).json({

@@ -104,11 +104,13 @@ async function getAllProjects(req, res, next) {
       deadline: p.deadline,
       statut: p.statut,
       progression: p.progression,
-      enseignantId: p.enseignantId._id.toString(),
-      enseignant: `${p.enseignantId.nom} ${p.enseignantId.prenom}`,
+      enseignantId: p.enseignantId ? p.enseignantId._id.toString() : null,
+      enseignant: p.enseignantId
+        ? `${p.enseignantId.nom} ${p.enseignantId.prenom}`
+        : null,
       etudiantsCount: p.etudiantIds ? p.etudiantIds.length : 0,
-      clubId: p.clubId._id.toString(),
-      clubName: p.clubId.nom,
+      clubId: p.clubId ? p.clubId._id.toString() : null,
+      clubName: p.clubId ? p.clubId.nom : 'Club supprimé',
       createdAt: p.createdAt,
     }));
 
@@ -145,14 +147,16 @@ async function getProjectById(req, res, next) {
         deadline: project.deadline,
         statut: project.statut,
         progression: project.progression,
-        enseignant: `${project.enseignantId.nom} ${project.enseignantId.prenom}`,
+        enseignant: project.enseignantId
+          ? `${project.enseignantId.nom} ${project.enseignantId.prenom}`
+          : null,
         etudiants: project.etudiantIds.map(e => ({
           id: e._id.toString(),
           nom: e.nom,
           prenom: e.prenom,
           email: e.email,
         })),
-        clubName: project.clubId.nom,
+        clubName: project.clubId ? project.clubId.nom : 'Club supprimé',
       },
     });
   } catch (error) {
@@ -181,21 +185,25 @@ async function getTeacherEventInvitations(req, res, next) {
       })
       .sort({ createdAt: -1 });
 
-    const eventInvitations = invitations.map(inv => ({
-      id: inv._id.toString(),
-      invitationId: inv._id.toString(),
-      evenementId: inv.evenementId._id.toString(),
-      titre: inv.evenementId.titre,
-      description: inv.evenementId.description,
-      date: inv.evenementId.date,
-      lieu: inv.evenementId.lieu,
-      capacite: inv.evenementId.capacite,
-      type: inv.evenementId.type,
-      statut: inv.statut,
-      clubName: inv.evenementId.clubId.nom,
-      organisateur: `${inv.evenementId.organisateurId.nom} ${inv.evenementId.organisateurId.prenom}`,
-      dateInvitation: inv.createdAt,
-    }));
+    const eventInvitations = invitations
+      .filter(inv => inv.evenementId)
+      .map(inv => ({
+        id: inv._id.toString(),
+        invitationId: inv._id.toString(),
+        evenementId: inv.evenementId._id.toString(),
+        titre: inv.evenementId.titre,
+        description: inv.evenementId.description,
+        date: inv.evenementId.date,
+        lieu: inv.evenementId.lieu,
+        capacite: inv.evenementId.capacite,
+        type: inv.evenementId.type,
+        statut: inv.statut,
+        clubName: inv.evenementId.clubId?.nom || 'Club supprimé',
+        organisateur: inv.evenementId.organisateurId
+          ? `${inv.evenementId.organisateurId.nom} ${inv.evenementId.organisateurId.prenom}`
+          : 'Organisateur supprimé',
+        dateInvitation: inv.createdAt,
+      }));
 
     return res.status(200).json({
       success: true,
@@ -274,7 +282,7 @@ async function getTeacherProjectEncadrement(req, res, next) {
         prenom: e.prenom,
         email: e.email,
       })),
-      clubName: p.clubId.nom,
+      clubName: p.clubId ? p.clubId.nom : 'Club supprimé',
       createdAt: p.createdAt,
     }));
 
@@ -282,6 +290,50 @@ async function getTeacherProjectEncadrement(req, res, next) {
       success: true,
       data: {
         items: projectEncadrements,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getTeacherEventEncadrement(req, res, next) {
+  try {
+    const teacherId = req.user._id;
+
+    const events = await Evenement.find({
+      organisateurId: teacherId,
+    })
+      .populate('clubId', 'nom')
+      .sort({ date: -1 });
+
+    const eventEncadrements = await Promise.all(
+      events.map(async (event) => {
+        const participantsCount = await ParticipationEvenement.countDocuments({
+          evenementId: event._id,
+          statut: { $in: ['inscrit', 'confirme', 'present'] },
+        });
+
+        return {
+          id: event._id.toString(),
+          titre: event.titre,
+          description: event.description,
+          date: event.date,
+          lieu: event.lieu,
+          capacite: event.capacite,
+          participantsCount,
+          type: event.type,
+          clubId: event.clubId ? event.clubId._id.toString() : null,
+          clubName: event.clubId ? event.clubId.nom : 'Club supprimé',
+          createdAt: event.createdAt,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: eventEncadrements,
       },
     });
   } catch (error) {
@@ -318,7 +370,7 @@ async function getTeacherProjectInvitations(req, res, next) {
       statut: p.statut,
       progression: p.progression,
       deadline: p.deadline,
-      clubName: p.clubId.nom,
+      clubName: p.clubId ? p.clubId.nom : 'Club supprimé',
       reponse: 'accepte', // Simplification pour now
     }));
 
@@ -354,22 +406,26 @@ async function getPendingEventInvitations(req, res, next) {
       })
       .sort({ dateInvitation: -1 });
 
-    const eventInvitations = invitations.map(inv => ({
-      id: inv._id.toString(),
-      evenementId: inv.evenementId._id.toString(),
-      titre: inv.evenementId.titre,
-      description: inv.evenementId.description,
-      date: inv.evenementId.date,
-      lieu: inv.evenementId.lieu,
-      capacite: inv.evenementId.capacite,
-      type: inv.evenementId.type,
-      clubId: inv.evenementId.clubId._id.toString(),
-      clubName: inv.evenementId.clubId.nom,
-      organisateur: `${inv.evenementId.organisateurId.nom} ${inv.evenementId.organisateurId.prenom}`,
-      message: inv.message,
-      statut: inv.statut,
-      dateInvitation: inv.dateInvitation,
-    }));
+    const eventInvitations = invitations
+      .filter(inv => inv.evenementId)
+      .map(inv => ({
+        id: inv._id.toString(),
+        evenementId: inv.evenementId._id.toString(),
+        titre: inv.evenementId.titre,
+        description: inv.evenementId.description,
+        date: inv.evenementId.date,
+        lieu: inv.evenementId.lieu,
+        capacite: inv.evenementId.capacite,
+        type: inv.evenementId.type,
+        clubId: inv.evenementId.clubId?._id?.toString() || null,
+        clubName: inv.evenementId.clubId?.nom || 'Club supprimé',
+        organisateur: inv.evenementId.organisateurId
+          ? `${inv.evenementId.organisateurId.nom} ${inv.evenementId.organisateurId.prenom}`
+          : 'Organisateur supprimé',
+        message: inv.message,
+        statut: inv.statut,
+        dateInvitation: inv.dateInvitation,
+      }));
 
     return res.status(200).json({
       success: true,
@@ -594,6 +650,7 @@ module.exports = {
   respondToLegacyEventInvitation,
   respondToEventInvitation,
   getTeacherProjectEncadrement,
+  getTeacherEventEncadrement,
   getTeacherProjectInvitations,
   getPendingEventInvitations,
   getPendingProjectInvitations,

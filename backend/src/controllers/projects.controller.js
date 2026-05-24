@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { Projet, Tache, Utilisateur, Club, Competence } = require('../models');
+const { Projet, Tache, ProjectTask, Utilisateur, Club, Competence, InvitationProjet } = require('../models');
+const notificationService = require('../services/notification.service');
 
 const PROJECT_STATUTS = ['en_cours', 'termine', 'annule', 'en_attente'];
 const TACHE_STATUTS = ['a_faire', 'en_cours', 'terminee'];
@@ -326,24 +327,24 @@ async function createProject(req, res) {
     if (errors.length > 0) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
-// Vérifier l'encadrant si fourni
-const enseignantId = payload.enseignantId || null;
+    // Vérifier l'encadrant si fourni, mais seulement pour envoyer une invitation
+    const enseignantId = payload.enseignantId || null;
 
-if (enseignantId) {
-  const enseignant = await Utilisateur.findOne({
-    _id: enseignantId,
-    role: 'enseignant'
-  });
+    if (enseignantId) {
+      const enseignant = await Utilisateur.findOne({
+        _id: enseignantId,
+        role: 'enseignant',
+      });
 
-  if (!enseignant) {
-    return sendError(
-      res,
-      400,
-      ERROR_CODES.VALIDATION_ERROR,
-      "L'encadrant n'existe pas"
-    );
-  }
-}
+      if (!enseignant) {
+        return sendError(
+          res,
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          "L'encadrant n'existe pas"
+        );
+      }
+    }
     // Vérifier les compétences si fournies
     const competenceIds = Array.isArray(payload.competenceIds) ? payload.competenceIds : [];
     if (competenceIds.length > 0) {
@@ -363,18 +364,46 @@ if (enseignantId) {
     }
 
     const created = await Projet.create({
-  titre: payload.titre.trim(),
-  description: payload.description || '',
-  objectif: payload.objectif || '',
-  dateDebut: parseDate(payload.dateDebut) || new Date(),
-  deadline: parseDate(payload.deadline),
-  statut: payload.statut || 'en_attente',
-  progression: 0,
-  clubId: req.user.clubId || null,
-  competenceIds,
-  etudiantIds,
-  enseignantId: enseignantId || null, // 👈 AJOUT ICI
-});
+      titre: payload.titre.trim(),
+      description: payload.description || '',
+      objectif: payload.objectif || '',
+      dateDebut: parseDate(payload.dateDebut) || new Date(),
+      deadline: parseDate(payload.deadline),
+      statut: payload.statut || 'en_attente',
+      progression: 0,
+      clubId: req.user.clubId || null,
+      competenceIds,
+      etudiantIds,
+      enseignantId: null,
+    });
+
+    if (enseignantId) {
+      const existingInvitation = await InvitationProjet.findOne({
+        projetId: created._id,
+        enseignantId,
+      });
+
+      if (!existingInvitation) {
+        await InvitationProjet.create({
+          projetId: created._id,
+          enseignantId,
+          clubId: req.user.clubId || null,
+          statut: 'en_attente',
+        });
+
+        const club = await Club.findById(req.user.clubId);
+        const clubName = club ? club.nom : 'Un club';
+
+        await notificationService.createNotification(
+          enseignantId,
+          'invitation_project',
+          'Nouvelle invitation à un projet',
+          `${clubName} vous invite à encadrer le projet "${created.titre}".`,
+          created._id,
+          'project'
+        );
+      }
+    }
 
     return sendSuccess(res, 201, { id: created._id.toString() });
   } catch (err) {
@@ -459,8 +488,11 @@ async function deleteProject(req, res) {
     }
 
 
-    // Cascade : supprimer les tâches liées
-    await Tache.deleteMany({ projetId: id });
+    // Cascade : supprimer les tâches liées dans les deux collections (legacy + unifiée)
+    await Promise.all([
+      Tache.deleteMany({ projetId: id }),
+      ProjectTask.deleteMany({ projectId: id }),
+    ]);
     await Projet.findByIdAndDelete(id);
 
     return sendSuccess(res, 200, { id, deleted: true });
