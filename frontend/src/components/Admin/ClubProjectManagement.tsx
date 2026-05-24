@@ -25,11 +25,13 @@ import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ChevronDown, ChevronUp, Mail } from 'lucide-react';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
 
 interface Project {
   id: string;
   titre: string;
   description?: string;
+  imageUrl?: string | null;
   objectif?: string;
   dateDebut: string;
   deadline: string;
@@ -56,6 +58,7 @@ export function ClubProjectManagement() {
   const [formData, setFormData] = useState({
     titre: '',
     description: '',
+    imageUrl: '',
     objectif: '',
     dateDebut: '',
     deadline: '',
@@ -64,6 +67,8 @@ export function ClubProjectManagement() {
     progression: '0',
   });
   const { toast } = useToast();
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     loadProjects();
@@ -88,6 +93,7 @@ export function ClubProjectManagement() {
     setFormData({
       titre: '',
       description: '',
+      imageUrl: '',
       objectif: '',
       dateDebut: '',
       deadline: '',
@@ -95,6 +101,8 @@ export function ClubProjectManagement() {
       statut: 'en_attente',
       progression: '0',
     });
+    setPhotoFile(null);
+    setPhotoPreview(null);
     setEditingProject(null);
   };
 
@@ -104,6 +112,7 @@ export function ClubProjectManagement() {
       setFormData({
         titre: project.titre,
         description: project.description || '',
+        imageUrl: project.imageUrl || '',
         objectif: project.objectif || '',
         dateDebut: project.dateDebut,
         deadline: project.deadline,
@@ -111,6 +120,8 @@ export function ClubProjectManagement() {
         statut: project.statut,
         progression: project.progression.toString(),
       });
+      setPhotoPreview(project.imageUrl || null);
+      setPhotoFile(null);
     } else {
       resetForm();
     }
@@ -128,9 +139,15 @@ export function ClubProjectManagement() {
     }
 
     try {
+      let uploadedImageUrl = formData.imageUrl;
+      if (photoFile) {
+        uploadedImageUrl = await uploadImageToCloudinary(photoFile);
+      }
+
       if (editingProject) {
         await clubDashboardApi.updateClubProject(editingProject.id, {
           ...formData,
+          imageUrl: uploadedImageUrl || undefined,
           progression: parseInt(formData.progression),
         });
         toast({
@@ -140,6 +157,7 @@ export function ClubProjectManagement() {
       } else {
         await clubDashboardApi.createClubProject({
           ...formData,
+          imageUrl: uploadedImageUrl || undefined,
         });
         toast({
           title: 'Succès',
@@ -234,6 +252,23 @@ export function ClubProjectManagement() {
                     }
                     placeholder="Description du projet"
                   />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Photo (optionnel)</label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setPhotoFile(file);
+                      setPhotoPreview(file ? URL.createObjectURL(file) : formData.imageUrl || null);
+                    }}
+                  />
+                  {photoPreview ? (
+                    <div className="mt-2 overflow-hidden rounded-md border border-border">
+                      <img src={photoPreview} alt="Aperçu projet" className="h-36 w-full object-cover" />
+                    </div>
+                  ) : null}
                 </div>
                 <div>
                   <label className="text-sm font-medium">Objectif</label>
@@ -332,6 +367,11 @@ export function ClubProjectManagement() {
             projects.map((project) => (
               <Card key={project.id} className="border hover:shadow-md transition">
                 <CardContent className="pt-4">
+                  {project.imageUrl ? (
+                    <div className="mb-3 overflow-hidden rounded-md">
+                      <img src={project.imageUrl} alt={project.titre} className="h-44 w-full object-cover" />
+                    </div>
+                  ) : null}
                   {/* Project Header */}
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">

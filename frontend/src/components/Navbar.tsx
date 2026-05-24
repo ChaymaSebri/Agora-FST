@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Rocket, Menu, Shield, LogOut, User, Zap, BookOpen, Inbox } from "lucide-react";
+import { LayoutDashboard, Rocket, Menu, Shield, LogOut, User, Zap, BookOpen, Inbox, ListTodo } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import logo from "@/assets/logo.png";
@@ -19,22 +19,30 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { fetchClubMembershipRequests } from "@/services/api";
+import { ProfileNotificationsMenu } from "@/components/ProfileNotificationsMenu";
+import { NotificationDialog } from "@/components/NotificationPanel";
 
 const navItems = [
   { name: "Accueil", path: "/" },
+  { name: "Actualites", path: "/news" },
   { name: "Clubs", path: "/clubs" },
   { name: "Projets", path: "/projects" },
   { name: "Événements", path: "/events" },
-  { name: "Statistiques", path: "/stats" },
 ];
 
 export const Navbar = () => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [pendingMembershipCount, setPendingMembershipCount] = useState(0);
   const { user, isAdmin, signOut } = useAuth();
   const avatarSrc = user?.avatarUrl || undefined;
-  const avatarInitial = user?.email?.charAt(0).toUpperCase() || "U";
+  const displayName = [user?.prenom, user?.nom]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    || String(user?.fullName || "").trim();
+  const avatarInitial = (displayName || user?.email || "U").charAt(0).toUpperCase();
   const roleLabel = (() => {
     switch (user?.role) {
       case "admin":
@@ -126,6 +134,8 @@ export const Navbar = () => {
                       Mon profil
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <ProfileNotificationsMenu onOpenNotifications={() => setNotificationsOpen(true)} />
                   {user?.role === "club" && (
                     <>
                       <DropdownMenuSeparator />
@@ -169,6 +179,17 @@ export const Navbar = () => {
                         <Link to="/teacher-dashboard" className="cursor-pointer">
                           <BookOpen className="w-4 h-4 mr-2" />
                           Dashboard Enseignant
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {user?.role === "etudiant" && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to="/my-projects" className="cursor-pointer">
+                          <ListTodo className="w-4 h-4 mr-2" />
+                          Mes projets
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
@@ -232,6 +253,16 @@ export const Navbar = () => {
                       <User className="w-5 h-5" />
                       Mon profil
                     </Link>
+                    {user?.role === "etudiant" && (
+                      <Link
+                        to="/my-projects"
+                        onClick={() => setOpen(false)}
+                        className="text-lg font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+                      >
+                        <ListTodo className="w-5 h-5" />
+                        Mes projets
+                      </Link>
+                    )}
                           {user?.role === 'admin' && (
                             <Link 
                               to="/admin" 
@@ -256,6 +287,7 @@ export const Navbar = () => {
           </Sheet>
         </div>
       </div>
+      <NotificationDialog open={notificationsOpen} onOpenChange={setNotificationsOpen} />
     </nav>
   );
 };

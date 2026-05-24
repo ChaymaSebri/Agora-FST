@@ -136,6 +136,14 @@ PORT=5000
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>/<database>?retryWrites=true&w=majority
 CLIENT_URL=http://localhost:5173
 JWT_SECRET=change_this_secret
+ADMIN_EMAIL=admin@agorafst.tn
+ADMIN_PASSWORD=Admin@123
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<your-smtp-user>
+SMTP_PASS=<your-smtp-password>
+SMTP_FROM="Agora FST <your-smtp-user>"
 ```
 
 Lancer le backend:

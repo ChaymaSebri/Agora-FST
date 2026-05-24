@@ -16,6 +16,8 @@ import Profile from "./pages/Profile";
 import EditProfile from "./pages/EditProfile";
 import ChangePassword from "./pages/ChangePassword";
 import Projects from "./pages/Projects";
+import News from "./pages/News";
+import MyProjects from "./pages/MyProjects";
 import CreateProject from "./pages/CreateProject";
 import Stats from "./pages/Stats";
 import { ClubDashboard } from "./pages/ClubDashboard";
@@ -51,6 +53,7 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
               <Route path="/clubs" element={<><Navbar /><Clubs /></>} />
               <Route path="/events" element={<><Navbar /><Events /></>} />
+              <Route path="/news" element={<News />} />
               <Route 
                 path="/events/new" 
                 element={
@@ -79,6 +82,15 @@ const App = () => (
                 } 
               />
               <Route path="/projects" element={<><Navbar /><Projects /></>} />
+              <Route
+                path="/my-projects"
+                element={
+                  <ProtectedRoute requireRole="etudiant">
+                    <Navbar />
+                    <MyProjects />
+                  </ProtectedRoute>
+                }
+              />
               <Route 
                 path="/projects/new" 
                 element={

@@ -54,6 +54,13 @@ export default function EventDetailModal({ event, onClose }: EventDetailModalPro
     ? Math.round((event.participantsCount / event.capacite) * 100)
     : 0;
 
+  const organizerName = (() => {
+    const personName = `${event.organisateurId?.prenom || ''} ${event.organisateurId?.nom || ''}`.trim();
+    if (personName) return personName;
+    if (event.clubId?.nom) return event.clubId.nom;
+    return event.organisateurId?.email || 'Organisateur inconnu';
+  })();
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto">
@@ -89,9 +96,7 @@ export default function EventDetailModal({ event, onClose }: EventDetailModalPro
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Organisateur
               </label>
-              <p className="text-gray-600">
-                {event.organisateurId?.prenom} {event.organisateurId?.nom}
-              </p>
+              <p className="text-gray-600">{organizerName}</p>
             </div>
           </div>
 

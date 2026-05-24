@@ -84,7 +84,7 @@ export function TeacherDashboard() {
     <div className="min-h-screen bg-gray-100">
       <Navbar />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 pt-20">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Dashboard Enseignant</h1>
           <p className="text-gray-600">

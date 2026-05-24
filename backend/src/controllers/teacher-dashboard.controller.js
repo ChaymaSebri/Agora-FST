@@ -208,7 +208,7 @@ async function getTeacherEventInvitations(req, res, next) {
   }
 }
 
-async function respondToEventInvitation(req, res, next) {
+async function respondToLegacyEventInvitation(req, res, next) {
   try {
     const { invitationId } = req.params;
     const { statut } = req.body; // 'confirme' ou 'annule'
@@ -386,6 +386,7 @@ async function respondToEventInvitation(req, res, next) {
   try {
     const { invitationId } = req.params;
     const { statut, message } = req.body;
+    const notificationService = require('../services/notification.service');
 
     if (!['accepte', 'refuse'].includes(statut)) {
       return next(new ApiError(400, 'Statut invalide. Doit être "accepte" ou "refuse".'));
@@ -427,6 +428,25 @@ async function respondToEventInvitation(req, res, next) {
         });
         await participation.save();
       }
+    }
+
+    // Créer une notification pour le club
+    try {
+      const teacherName = `${req.user.prenom} ${req.user.nom}`;
+      const responseText = statut === 'accepte' ? 'a accepté' : 'a refusé';
+      const notificationType = statut === 'accepte' ? 'invitation_accepted' : 'invitation_refused';
+      
+      await notificationService.createNotification(
+        invitation.clubId._id.toString(),
+        notificationType,
+        `Réponse à l'invitation pour l'événement`,
+        `${teacherName} ${responseText} votre invitation pour l'événement "${invitation.evenementId.nom}".`,
+        invitation._id,
+        'invitation'
+      );
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
+      // Ne pas bloquer la réponse si la notification échoue
     }
 
     return res.status(200).json({
@@ -496,13 +516,15 @@ async function respondToProjectInvitation(req, res, next) {
   try {
     const { invitationId } = req.params;
     const { statut, message } = req.body;
+    const notificationService = require('../services/notification.service');
 
     if (!['accepte', 'refuse'].includes(statut)) {
       return next(new ApiError(400, 'Statut invalide. Doit être "accepte" ou "refuse".'));
     }
 
     const invitation = await InvitationProjet.findById(invitationId)
-      .populate('projetId');
+      .populate('projetId')
+      .populate('clubId');
 
     if (!invitation) {
       return next(new ApiError(404, 'Invitation non trouvée'));
@@ -530,6 +552,25 @@ async function respondToProjectInvitation(req, res, next) {
       }
     }
 
+    // Créer une notification pour le club
+    try {
+      const teacherName = `${req.user.prenom} ${req.user.nom}`;
+      const responseText = statut === 'accepte' ? 'a accepté' : 'a refusé';
+      const notificationType = statut === 'accepte' ? 'invitation_accepted' : 'invitation_refused';
+      
+      await notificationService.createNotification(
+        invitation.clubId._id.toString(),
+        notificationType,
+        `Réponse à l'invitation pour le projet`,
+        `${teacherName} ${responseText} votre invitation pour le projet "${invitation.projetId.titre}".`,
+        invitation._id,
+        'invitation'
+      );
+    } catch (notifError) {
+      console.error('Erreur lors de la création de la notification:', notifError);
+      // Ne pas bloquer la réponse si la notification échoue
+    }
+
     return res.status(200).json({
       success: true,
       message: `Invitation ${statut === 'accepte' ? 'acceptée' : 'refusée'}`,
@@ -550,6 +591,7 @@ module.exports = {
   getAllProjects,
   getProjectById,
   getTeacherEventInvitations,
+  respondToLegacyEventInvitation,
   respondToEventInvitation,
   getTeacherProjectEncadrement,
   getTeacherProjectInvitations,

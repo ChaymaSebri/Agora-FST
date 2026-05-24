@@ -7,6 +7,8 @@ import { ClubEventManagement } from '@/components/Admin/ClubEventManagement';
 import { ClubEventParticipations } from '@/components/Admin/ClubEventParticipations';
 import { ClubProjectManagement } from '@/components/Admin/ClubProjectManagement';
 import { ClubProjectParticipantsManagement } from '@/components/Admin/ClubProjectParticipantsManagement';
+import { ClubProjectParticipationRequests } from '@/components/Admin/ClubProjectParticipationRequests';
+import { ClubProjectTasksManagement } from '@/components/Admin/ClubProjectTasksManagement';
 import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { useToast } from '@/hooks/use-toast';
 
@@ -41,7 +43,7 @@ export function ClubDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 pt-20">
       <div className="container mx-auto py-8 px-4">
         {/* Header */}
         <div className="mb-8">
@@ -122,12 +124,14 @@ export function ClubDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-white shadow-md rounded-lg p-1">
+          <TabsList className="grid w-full grid-cols-2 gap-1 bg-white shadow-md rounded-lg p-1 md:grid-cols-7">
             <TabsTrigger value="profile">Profil</TabsTrigger>
             <TabsTrigger value="events">Événements</TabsTrigger>
             <TabsTrigger value="participations">Validations</TabsTrigger>
             <TabsTrigger value="projects">Projets</TabsTrigger>
+            <TabsTrigger value="project-requests">Demandes projets</TabsTrigger>
             <TabsTrigger value="project-participants">Participants</TabsTrigger>
+            <TabsTrigger value="project-tasks">Tâches</TabsTrigger>
           </TabsList>
 
           {/* Profil Tab */}
@@ -150,9 +154,18 @@ export function ClubDashboard() {
             <ClubProjectManagement />
           </TabsContent>
 
+          {/* Project Participation Requests Tab */}
+          <TabsContent value="project-requests" className="space-y-4">
+            <ClubProjectParticipationRequests />
+          </TabsContent>
+
           {/* Project Participants Tab */}
           <TabsContent value="project-participants" className="space-y-4">
             <ClubProjectParticipantsManagement />
+          </TabsContent>
+
+          <TabsContent value="project-tasks" className="space-y-4">
+            <ClubProjectTasksManagement />
           </TabsContent>
         </Tabs>
       </div>

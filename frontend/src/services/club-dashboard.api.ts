@@ -73,6 +73,7 @@ export const listClubEvents = async () => {
 export const createClubEvent = async (eventData: {
   titre: string;
   description?: string;
+  imageUrl?: string;
   date: string;
   lieu?: string;
   capacite?: number;
@@ -92,6 +93,7 @@ export const updateClubEvent = async (
   eventData: {
     titre?: string;
     description?: string;
+    imageUrl?: string;
     date?: string;
     lieu?: string;
     capacite?: number;
@@ -177,6 +179,7 @@ export const listClubProjects = async () => {
 export const createClubProject = async (projectData: {
   titre: string;
   description?: string;
+  imageUrl?: string;
   objectif?: string;
   dateDebut?: string;
   deadline: string;
@@ -196,6 +199,7 @@ export const updateClubProject = async (
   projectData: {
     titre?: string;
     description?: string;
+    imageUrl?: string;
     objectif?: string;
     dateDebut?: string;
     deadline?: string;
@@ -268,6 +272,16 @@ export const inviteTeacherToProject = async (projectId: string, teacherId: strin
     return response.data;
   } catch (error) {
     console.error('Erreur lors de l\'invitation de l\'enseignant:', error);
+    throw error;
+  }
+};
+
+export const getClubStudents = async (clubId: string) => {
+  try {
+    const response = await api.get(`/clubs/${clubId}/students`);
+    return response.data.items;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des étudiants du club:', error);
     throw error;
   }
 };

@@ -12,6 +12,7 @@ import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "luc
 import { z } from "zod";
 import { ApiError, fetchClubs, fetchEventById, updateEvent, fetchCompetences } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { uploadImageToCloudinary } from "@/lib/cloudinary";
 
 const eventSchema = z.object({
   title: z.string().min(3, "Le titre doit contenir au moins 3 caractères").max(100),
@@ -39,6 +40,9 @@ const EditEvent = () => {
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
   const [maxAttendees, setMaxAttendees] = useState("30");
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -79,6 +83,7 @@ const EditEvent = () => {
         setTime(event.time);
         setLocation(event.location);
         setMaxAttendees(String(event.maxAttendees || 0));
+        setImageUrl(String(event.imageUrl || ""));
         setCoOrganizerClubIds(Array.isArray(event.coOrganizerClubIds) ? event.coOrganizerClubIds : []);
         setSelectedCompetenceIds(Array.isArray(event.competenceIds) ? event.competenceIds : []);
       } catch (error) {
@@ -145,6 +150,11 @@ const EditEvent = () => {
       });
       setIsLoading(true);
 
+      let nextImageUrl = imageUrl;
+      if (photoFile) {
+        nextImageUrl = await uploadImageToCloudinary(photoFile);
+      }
+
       if (!id) {
         throw new Error("Missing event id");
       }
@@ -152,6 +162,7 @@ const EditEvent = () => {
       await updateEvent(id, {
         title,
         description,
+        imageUrl: nextImageUrl,
         type,
         date,
         time,
@@ -222,6 +233,25 @@ const EditEvent = () => {
                 <Textarea id="description" placeholder="Décrivez votre événement..." value={description} onChange={(e) => setDescription(e.target.value)} required rows={5} />
                 <p className="text-xs text-muted-foreground">{description.length}/500 caractères</p>
               </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="eventPhoto">Photo de l'événement (optionnel)</Label>
+                      <Input
+                        id="eventPhoto"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setPhotoFile(file);
+                          setPhotoPreview(file ? URL.createObjectURL(file) : null);
+                        }}
+                      />
+                      {(photoPreview || imageUrl) ? (
+                        <div className="overflow-hidden rounded-md border border-border">
+                          <img src={photoPreview || imageUrl} alt="Aperçu événement" className="h-48 w-full object-cover" />
+                        </div>
+                      ) : null}
+                    </div>
 
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">

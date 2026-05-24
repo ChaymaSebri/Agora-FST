@@ -28,7 +28,7 @@ router.get('/teacher/projects', authenticate, checkRole('enseignant'), teacherDa
 // ============================================================================
 
 router.get('/teacher/event-invitations', authenticate, checkRole('enseignant'), teacherDashboardController.getTeacherEventInvitations);
-router.patch('/teacher/event-invitations/:invitationId', authenticate, checkRole('enseignant'), teacherDashboardController.respondToEventInvitation);
+router.patch('/teacher/event-invitations/:invitationId', authenticate, checkRole('enseignant'), teacherDashboardController.respondToLegacyEventInvitation);
 
 // ============================================================================
 // TEACHER ONLY - Event Invitations (New System)

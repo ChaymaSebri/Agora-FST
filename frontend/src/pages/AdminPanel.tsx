@@ -38,16 +38,16 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto p-6">
-          <div className="w-full">
-            {renderContent()}
+    <div className="bg-gray-50 pt-20">
+      <div className="flex min-h-[calc(100vh-5rem)]">
+        <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-7xl mx-auto p-6">
+            <div className="w-full">{renderContent()}</div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

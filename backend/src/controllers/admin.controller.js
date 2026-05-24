@@ -120,15 +120,30 @@ async function getAllUsers(req, res, next) {
     }
 
     if (search) {
+      const trimmedSearch = String(search).trim();
+
+      const matchingClubIds = trimmedSearch
+        ? (
+            await Club.find({ nom: { $regex: trimmedSearch, $options: 'i' } })
+              .select('_id')
+              .lean()
+          ).map((club) => club._id)
+        : [];
+
       filter.$or = [
-        { nom: { $regex: search, $options: 'i' } },
-        { prenom: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
+        { nom: { $regex: trimmedSearch, $options: 'i' } },
+        { prenom: { $regex: trimmedSearch, $options: 'i' } },
+        { email: { $regex: trimmedSearch, $options: 'i' } },
       ];
+
+      if (matchingClubIds.length > 0) {
+        filter.$or.push({ clubId: { $in: matchingClubIds } });
+      }
     }
 
     const users = await Utilisateur.find(filter)
       .select('-motDePasse')
+      .populate('clubId', 'nom')
       .skip(skip)
       .limit(parseInt(limit))
       .sort({ createdAt: -1 });

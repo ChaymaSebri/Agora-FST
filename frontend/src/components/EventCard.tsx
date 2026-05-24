@@ -26,6 +26,7 @@ export interface Event {
   participantsCount?: number;
   maxAttendees: number;
   type: "atelier" | "conference" | "hackathon" | "sortie" | "autre" | "workshop" | "meeting" | "competition";
+  imageUrl?: string | null;
   organisateurId?: string;
   clubId?: string;
   clubName?: string | null;
@@ -115,6 +116,15 @@ export const EventCard = ({
 
   return (
     <Card className="group hover:shadow-hover transition-all duration-300 border-border hover:border-primary/50">
+      {event.imageUrl ? (
+        <div className="aspect-video w-full overflow-hidden rounded-t-xl">
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        </div>
+      ) : null}
       <CardHeader>
         <div className="flex items-start justify-between mb-2">
           <Badge className={typeColors[event.type] || typeColors.autre}>

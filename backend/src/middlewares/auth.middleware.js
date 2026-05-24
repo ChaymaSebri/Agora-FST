@@ -64,7 +64,42 @@ function authorizeRoles(...allowedRoles) {
   };
 }
 
+async function authenticateSocket(socket, next) {
+  try {
+    const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return next(new Error('Token manquant ou invalide'));
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return next(new Error('JWT_SECRET manquant'));
+    }
+
+    const payload = jwt.verify(token, secret);
+    const user = await Utilisateur.findById(payload.sub).select('-motDePasse');
+
+    if (!user) {
+      return next(new Error('Utilisateur introuvable'));
+    }
+
+    socket.userId = user._id.toString();
+    socket.user = user;
+
+    return next();
+  } catch (error) {
+    return next(new Error('Authentification échouée'));
+  }
+}
+
+const checkRole = (...allowedRoles) => {
+  return authorizeRoles(...allowedRoles);
+};
+
 module.exports = {
   authenticate,
   authorizeRoles,
+  authenticateSocket,
+  checkRole,
 };
