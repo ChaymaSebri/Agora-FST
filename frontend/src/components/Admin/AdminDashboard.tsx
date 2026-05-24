@@ -37,8 +37,7 @@ interface DashboardStats {
     statut: string;
     progression: number;
     deadline: string;
-    enseignantId: { nom: string; prenom: string };
-  }>;
+enseignantId: { nom: string; prenom: string } | null;  }>;
   upcomingEvents: Array<{
     _id: string;
     titre: string;
@@ -236,8 +235,10 @@ export default function AdminDashboard() {
                 <tr key={project._id} className="border-b hover:bg-gray-50">
                   <td className="py-3 px-4">{project.titre}</td>
                   <td className="py-3 px-4">
-                    {project.enseignantId.prenom} {project.enseignantId.nom}
-                  </td>
+  {project.enseignantId
+    ? `${project.enseignantId.prenom} ${project.enseignantId.nom}`
+    : 'Aucun encadrant'}
+</td>
                   <td className="py-3 px-4">
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div

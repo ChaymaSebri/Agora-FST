@@ -430,10 +430,7 @@ async function inviteTeacherToEvent(req, res, next) {
       return next(new ApiError(404, 'Enseignant non trouvé'));
     }
 
-    // Chercher les modèles
-    const { InvitationEvenement } = require('../models');
-
-    // Vérifier si l'invitation existe déjà (toute invitation, quel que soit le statut)
+    // Vérifier si l'invitation existe déjà
     let invitation = await InvitationEvenement.findOne({
       evenementId: event._id,
       enseignantId: teacherId,
@@ -457,7 +454,7 @@ async function inviteTeacherToEvent(req, res, next) {
     }
 
     // Créer une nouvelle invitation
-    invitation = new (require('../models').InvitationEvenement)({
+    invitation = new InvitationEvenement({
       evenementId: event._id,
       enseignantId: teacherId,
       clubId: req.user.clubId,
@@ -476,13 +473,12 @@ async function inviteTeacherToEvent(req, res, next) {
         teacherId,
         'invitation_event',
         'Nouvelle invitation à un événement',
-        `${clubName} vous invite à participer à l'événement "${event.nom}".${message ? ` Message: ${message}` : ''}`,
+        `${clubName} vous invite à participer à l'événement "${event.titre}".${message ? ` Message: ${message}` : ''}`,
         event._id,
         'event'
       );
     } catch (notifError) {
       console.error('Erreur lors de la création de la notification:', notifError);
-      // Ne pas bloquer la création de l'invitation si la notification échoue
     }
 
     return res.status(201).json({
@@ -516,7 +512,6 @@ async function listClubProjects(req, res, next) {
 
     const projectsWithStats = projects.map(p => ({
       id: p._id.toString(),
-      clubId: p.clubId ? p.clubId.toString() : req.user.clubId?.toString(),
       titre: p.titre,
       description: p.description,
       imageUrl: p.imageUrl || null,
@@ -525,15 +520,19 @@ async function listClubProjects(req, res, next) {
       deadline: p.deadline,
       statut: p.statut,
       progression: p.progression,
-      enseignantId: p.enseignantId._id.toString(),
-      enseignant: `${p.enseignantId.nom} ${p.enseignantId.prenom}`,
+      enseignantId: p.enseignantId ? p.enseignantId._id.toString() : null,
+      enseignant: p.enseignantId
+        ? `${p.enseignantId.nom} ${p.enseignantId.prenom}`
+        : 'Aucun enseignant',
       etudiantsCount: p.etudiantIds ? p.etudiantIds.length : 0,
-      etudiants: p.etudiantIds ? p.etudiantIds.map(e => ({
-        id: e._id.toString(),
-        nom: e.nom,
-        prenom: e.prenom,
-        email: e.email,
-      })) : [],
+      etudiants: p.etudiantIds
+        ? p.etudiantIds.map(e => ({
+            id: e._id.toString(),
+            nom: e.nom,
+            prenom: e.prenom,
+            email: e.email,
+          }))
+        : [],
       createdAt: p.createdAt,
     }));
 
@@ -574,7 +573,7 @@ async function createClubProject(req, res, next) {
       objectif,
       dateDebut: dateDebut ? new Date(dateDebut) : new Date(),
       deadline: new Date(deadline),
-      enseignantId: enseignantId || req.user._id,
+      enseignantId: enseignantId || null,
       clubId: req.user.clubId,
       statut: 'en_attente',
     });
@@ -736,7 +735,7 @@ async function addProjectParticipant(req, res, next) {
       && club.membreIds.some((member) => String(member._id || member) === String(user._id) && member.role === 'etudiant');
 
     if (!isClubMember) {
-      return next(new ApiError(403, 'Cet étudiant n’appartient pas au club créateur du projet'));
+      return next(new ApiError(403, 'Cet étudiant n\'appartient pas au club créateur du projet'));
     }
 
     const alreadyParticipant = Array.isArray(project.etudiantIds)
@@ -814,10 +813,7 @@ async function inviteTeacherToProject(req, res, next) {
       return next(new ApiError(404, 'Enseignant non trouvé'));
     }
 
-    // Chercher le modèle
-    const { InvitationProjet } = require('../models');
-
-    // Vérifier si l'invitation existe déjà (toute invitation, quel que soit le statut)
+    // Vérifier si l'invitation existe déjà
     let invitation = await InvitationProjet.findOne({
       projetId: project._id,
       enseignantId: teacherId,
@@ -866,7 +862,6 @@ async function inviteTeacherToProject(req, res, next) {
       );
     } catch (notifError) {
       console.error('Erreur lors de la création de la notification:', notifError);
-      // Ne pas bloquer la création de l'invitation si la notification échoue
     }
 
     return res.status(201).json({
@@ -1058,7 +1053,6 @@ async function cancelProjectInvitation(req, res, next) {
 async function getProjectParticipationRequests(req, res, next) {
   try {
     const { projectId } = req.params;
-    const notificationService = require('../services/notification.service');
 
     const project = await Projet.findOne({
       _id: projectId,
@@ -1135,7 +1129,6 @@ async function respondToParticipationRequest(req, res, next) {
     }
 
     // Mettre à jour le statut de la demande
-    participationRequest.status = statut === 'accepte' ? 'accepted' : 'rejected';
     participationRequest.statut = statut === 'accepte' ? 'confirme' : 'annule';
     participationRequest.dateReponse = new Date();
     await participationRequest.save();
@@ -1165,7 +1158,6 @@ async function respondToParticipationRequest(req, res, next) {
       );
     } catch (notifError) {
       console.error('Erreur lors de la création de la notification:', notifError);
-      // Ne pas bloquer la réponse si la notification échoue
     }
 
     return res.status(200).json({

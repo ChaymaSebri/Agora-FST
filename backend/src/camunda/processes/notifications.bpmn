@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:modeler="http://camunda.org/schema/modeler/1.0"
+                  id="Definitions_notifications"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="Camunda Modeler"
+                  exporterVersion="5.0.0"
+                  modeler:executionPlatform="Camunda Cloud"
+                  modeler:executionPlatformVersion="8.4.0">
+
+  <bpmn:process id="notifications" name="Notifications Intelligentes" isExecutable="true">
+
+    <bpmn:startEvent id="StartEvent_1" name="Événement&#10;déclencheur">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:exclusiveGateway id="Gateway_Type" name="Type&#10;d&#39;événement ?">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_Deadline</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Retard</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Membre</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Evenement</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="Task_NotifDeadline" name="Alerte deadline&#10;proche">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-deadline-approaching" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Deadline</bpmn:incoming>
+      <bpmn:outgoing>Flow_A</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_NotifRetard" name="Alerte tâche&#10;en retard">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-task-overdue" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Retard</bpmn:incoming>
+      <bpmn:outgoing>Flow_B</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_NotifMembre" name="Nouveau membre&#10;ajouté">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-new-member" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Membre</bpmn:incoming>
+      <bpmn:outgoing>Flow_C</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_NotifEvenement" name="Événement club&#10;publié">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-event-published" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Evenement</bpmn:incoming>
+      <bpmn:outgoing>Flow_D</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_1" name="Fin">
+      <bpmn:incoming>Flow_A</bpmn:incoming>
+      <bpmn:incoming>Flow_B</bpmn:incoming>
+      <bpmn:incoming>Flow_C</bpmn:incoming>
+      <bpmn:incoming>Flow_D</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Gateway_Type" />
+    <bpmn:sequenceFlow id="Flow_Deadline" name="Deadline&#10;proche" sourceRef="Gateway_Type" targetRef="Task_NotifDeadline">
+      <bpmn:conditionExpression>=type = "deadline"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Retard" name="Tâche&#10;en retard" sourceRef="Gateway_Type" targetRef="Task_NotifRetard">
+      <bpmn:conditionExpression>=type = "retard"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Membre" name="Nouveau&#10;membre" sourceRef="Gateway_Type" targetRef="Task_NotifMembre">
+      <bpmn:conditionExpression>=type = "membre"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Evenement" name="Événement&#10;publié" sourceRef="Gateway_Type" targetRef="Task_NotifEvenement">
+      <bpmn:conditionExpression>=type = "evenement"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_A" sourceRef="Task_NotifDeadline" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="Flow_B" sourceRef="Task_NotifRetard" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="Flow_C" sourceRef="Task_NotifMembre" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="Flow_D" sourceRef="Task_NotifEvenement" targetRef="EndEvent_1" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="notifications">
+
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="130" y="315" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Gateway" bpmnElement="Gateway_Type" isMarkerVisible="true">
+        <dc:Bounds x="255" y="265" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="244" y="228" width="72" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_NotifDeadline" bpmnElement="Task_NotifDeadline">
+        <dc:Bounds x="380" y="80" width="120" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_NotifRetard" bpmnElement="Task_NotifRetard">
+        <dc:Bounds x="380" y="200" width="120" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_NotifMembre" bpmnElement="Task_NotifMembre">
+        <dc:Bounds x="380" y="320" width="120" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_NotifEvenement" bpmnElement="Task_NotifEvenement">
+        <dc:Bounds x="380" y="440" width="120" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_End" bpmnElement="EndEvent_1">
+        <dc:Bounds x="572" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="580" y="315" width="20" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_Flow_1" bpmnElement="Flow_1">
+        <di:waypoint x="188" y="290" /><di:waypoint x="255" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Deadline" bpmnElement="Flow_Deadline">
+        <di:waypoint x="280" y="265" /><di:waypoint x="280" y="120" /><di:waypoint x="380" y="120" />
+        <bpmndi:BPMNLabel><dc:Bounds x="290" y="183" width="54" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Retard" bpmnElement="Flow_Retard">
+        <di:waypoint x="280" y="265" /><di:waypoint x="280" y="240" /><di:waypoint x="380" y="240" />
+        <bpmndi:BPMNLabel><dc:Bounds x="290" y="248" width="50" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Membre" bpmnElement="Flow_Membre">
+        <di:waypoint x="280" y="315" /><di:waypoint x="280" y="360" /><di:waypoint x="380" y="360" />
+        <bpmndi:BPMNLabel><dc:Bounds x="290" y="328" width="52" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Evenement" bpmnElement="Flow_Evenement">
+        <di:waypoint x="280" y="315" /><di:waypoint x="280" y="480" /><di:waypoint x="380" y="480" />
+        <bpmndi:BPMNLabel><dc:Bounds x="290" y="418" width="54" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_A" bpmnElement="Flow_A">
+        <di:waypoint x="500" y="120" /><di:waypoint x="590" y="120" /><di:waypoint x="590" y="272" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_B" bpmnElement="Flow_B">
+        <di:waypoint x="500" y="240" /><di:waypoint x="590" y="240" /><di:waypoint x="590" y="272" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_C" bpmnElement="Flow_C">
+        <di:waypoint x="500" y="360" /><di:waypoint x="590" y="360" /><di:waypoint x="590" y="308" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_D" bpmnElement="Flow_D">
+        <di:waypoint x="500" y="480" /><di:waypoint x="590" y="480" /><di:waypoint x="590" y="308" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
