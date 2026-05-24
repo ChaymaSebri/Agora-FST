@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Rocket, Loader2, ArrowLeft } from "lucide-react";
+import { Rocket, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
 import { fetchCompetences } from "@/services/api";
 import { z } from "zod";
@@ -44,7 +44,9 @@ const signupSchema = authBaseSchema.extend({
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [authTab, setAuthTab] = useState<"login" | "signup">("login");
-  
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -66,7 +68,8 @@ const Auth = () => {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [resetModeEmail, setResetModeEmail] = useState("");
   const [resetModeToken, setResetModeToken] = useState("");
-  
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
@@ -465,12 +468,21 @@ const Auth = () => {
                   <div className="flex items-center gap-2">
                     <Input
                       id="reset-password"
-                      type={"password"}
+                      type={showResetPassword ? "text" : "password"}
                       value={resetNewPassword}
                       onChange={(e) => setResetNewPassword(e.target.value)}
                       placeholder="••••••••"
                       required
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Afficher ou masquer le mot de passe"
+                      onClick={() => setShowResetPassword((prev) => !prev)}
+                    >
+                      {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -478,12 +490,21 @@ const Auth = () => {
                   <div className="flex items-center gap-2">
                     <Input
                       id="reset-confirm-password"
-                      type={"password"}
+                      type={showResetConfirmPassword ? "text" : "password"}
                       value={resetConfirmPassword}
                       onChange={(e) => setResetConfirmPassword(e.target.value)}
                       placeholder="••••••••"
                       required
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="Afficher ou masquer le mot de passe"
+                      onClick={() => setShowResetConfirmPassword((prev) => !prev)}
+                    >
+                      {showResetConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                   </div>
                 </div>
                 <Button type="submit" variant="hero" className="w-full" disabled={resetPasswordLoading}>
@@ -552,12 +573,21 @@ const Auth = () => {
                     <div className="flex items-center gap-2">
                       <Input
                         id="login-password"
-                        type={"password"}
+                        type={showLoginPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         required
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Afficher ou masquer le mot de passe"
+                        onClick={() => setShowLoginPassword((prev) => !prev)}
+                      >
+                        {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
                   </div>
                   <Button
@@ -759,12 +789,21 @@ const Auth = () => {
                     <div className="flex items-center gap-2">
                       <Input
                         id="signup-password"
-                        type={"password"}
+                        type={showSignupPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={signupPassword}
                         onChange={(e) => setSignupPassword(e.target.value)}
                         required
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Afficher ou masquer le mot de passe"
+                        onClick={() => setShowSignupPassword((prev) => !prev)}
+                      >
+                        {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -772,12 +811,21 @@ const Auth = () => {
                     <div className="flex items-center gap-2">
                       <Input
                         id="signup-confirm"
-                        type={"password"}
+                        type={showSignupConfirmPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={signupConfirmPassword}
                         onChange={(e) => setSignupConfirmPassword(e.target.value)}
                         required
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Afficher ou masquer la confirmation du mot de passe"
+                        onClick={() => setShowSignupConfirmPassword((prev) => !prev)}
+                      >
+                        {showSignupConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
                   </div>
                   <Button
