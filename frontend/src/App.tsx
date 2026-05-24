@@ -23,6 +23,9 @@ import { TeacherDashboard } from "./pages/TeacherDashboard";
 import { Navbar } from "@/components/Navbar";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import ProjectDetail from "./pages/ProjectDetail";
+import EditProject from "./pages/EditProject";
+
 
 const queryClient = new QueryClient();
 
@@ -63,6 +66,15 @@ const App = () => (
                   <ProtectedRoute>
                     <Navbar />
                     <EditEvent />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/projects/:id/edit" 
+                element={
+                  <ProtectedRoute>
+                    <Navbar />
+                    <EditProject />
                   </ProtectedRoute>
                 } 
               />
@@ -139,6 +151,9 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/projects/:id" element={<><Navbar /><ProjectDetail /></>} />
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:process id="rejoindre-projet" name="Rejoindre un Projet" isExecutable="true">
+
+    <bpmn:startEvent id="start" name="Étudiant demande à rejoindre"/>
+    <bpmn:sequenceFlow id="sf1" sourceRef="start" targetRef="notif-club"/>
+
+    <bpmn:serviceTask id="notif-club" name="Notifier le club">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-club-demande"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf2" sourceRef="notif-club" targetRef="validation-club"/>
+
+    <bpmn:userTask id="validation-club" name="Club valide ou refuse">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="=clubUserId"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:sequenceFlow id="sf3" sourceRef="validation-club" targetRef="decision"/>
+
+    <bpmn:exclusiveGateway id="decision" name="Décision club ?"/>
+
+    <bpmn:sequenceFlow id="sf4" sourceRef="decision" targetRef="ajouter-membre">
+      <bpmn:conditionExpression>=decision = "accepte"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="sf5" sourceRef="decision" targetRef="notif-refus">
+      <bpmn:conditionExpression>=decision = "refuse"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ajouter-membre" name="Ajouter étudiant au projet">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="add-member-to-project"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="notif-refus" name="Notifier étudiant refus">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-student-refus"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf6" sourceRef="ajouter-membre" targetRef="end"/>
+    <bpmn:sequenceFlow id="sf7" sourceRef="notif-refus" targetRef="end"/>
+
+    <bpmn:endEvent id="end" name="Fin"/>
+  </bpmn:process>
+</bpmn:definitions>

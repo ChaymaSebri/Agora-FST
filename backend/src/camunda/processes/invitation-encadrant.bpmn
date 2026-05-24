@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:process id="invitation-encadrant" name="Invitation Encadrant" isExecutable="true">
+
+    <bpmn:startEvent id="start" name="Club invite un professeur"/>
+
+    <bpmn:sequenceFlow id="sf1" sourceRef="start" targetRef="envoi-invitation"/>
+
+    <bpmn:serviceTask id="envoi-invitation" name="Envoyer invitation email">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-invitation-email"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf2" sourceRef="envoi-invitation" targetRef="validation-prof"/>
+
+    <bpmn:userTask id="validation-prof" name="Professeur valide ou refuse">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="=enseignantId"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:sequenceFlow id="sf3" sourceRef="validation-prof" targetRef="decision"/>
+
+    <bpmn:exclusiveGateway id="decision" name="Réponse ?"/>
+
+    <bpmn:sequenceFlow id="sf4" sourceRef="decision" targetRef="accepte">
+      <bpmn:conditionExpression>=reponse = "accepte"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="sf5" sourceRef="decision" targetRef="refuse">
+      <bpmn:conditionExpression>=reponse = "refuse"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="accepte" name="Affecter encadrant au projet">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="assign-encadrant"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="refuse" name="Notifier le club du refus">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify-club-refus"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf6" sourceRef="accepte" targetRef="end"/>
+    <bpmn:sequenceFlow id="sf7" sourceRef="refuse" targetRef="end"/>
+
+    <bpmn:endEvent id="end" name="Fin"/>
+  </bpmn:process>
+</bpmn:definitions>

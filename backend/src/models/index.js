@@ -210,7 +210,7 @@ const projetSchema = new Schema(
     enseignantId: {
       type: Schema.Types.ObjectId,
       ref: 'Utilisateur',
-      required: true,
+      default: null,
     },
     etudiantIds: [{ type: Schema.Types.ObjectId, ref: 'Utilisateur' }],
     clubId: { type: Schema.Types.ObjectId, ref: 'Club' },

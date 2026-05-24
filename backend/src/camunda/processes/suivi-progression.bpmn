@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:process id="suivi-progression" name="Suivi Progression" isExecutable="true">
+
+    <bpmn:startEvent id="start" name="Timer hebdomadaire">
+      <bpmn:timerEventDefinition>
+        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">R/P1W</bpmn:timeCycle>
+      </bpmn:timerEventDefinition>
+    </bpmn:startEvent>
+
+    <bpmn:sequenceFlow id="sf1" sourceRef="start" targetRef="verifier-taches"/>
+
+    <bpmn:serviceTask id="verifier-taches" name="Vérifier tâches en retard">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="check-overdue-tasks"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf2" sourceRef="verifier-taches" targetRef="maj-progression"/>
+
+    <bpmn:serviceTask id="maj-progression" name="Mettre à jour progression">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="update-project-progression"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf3" sourceRef="maj-progression" targetRef="decision"/>
+
+    <bpmn:exclusiveGateway id="decision" name="Retard détecté ?"/>
+
+    <bpmn:sequenceFlow id="sf4" sourceRef="decision" targetRef="notif-retard">
+      <bpmn:conditionExpression>=hasOverdue = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="sf5" sourceRef="decision" targetRef="end">
+      <bpmn:conditionExpression>=hasOverdue = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="notif-retard" name="Envoyer alertes retard">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-overdue-alerts"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="sf6" sourceRef="notif-retard" targetRef="end"/>
+    <bpmn:endEvent id="end" name="Fin"/>
+  </bpmn:process>
+</bpmn:definitions>
