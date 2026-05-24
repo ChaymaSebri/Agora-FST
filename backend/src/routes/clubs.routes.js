@@ -6,6 +6,9 @@ router.get('/', clubsController.listClubs);
 router.get('/membership-requests/me', authenticate, clubsController.listMyMembershipRequests);
 router.get('/membership-requests', authenticate, authorizeRoles('club'), clubsController.listClubMembershipRequests);
 router.patch('/membership-requests/:requestId', authenticate, authorizeRoles('club'), clubsController.resolveMembershipRequest);
+// Allow both club admins and the requesting student to delete a membership request.
+// Authorization is handled inside the controller to support both roles.
+router.delete('/membership-requests/:requestId', authenticate, clubsController.deleteMembershipRequest);
 router.post('/:clubId/membership-requests', authenticate, authorizeRoles('etudiant'), clubsController.requestMembership);
 
 module.exports = router;

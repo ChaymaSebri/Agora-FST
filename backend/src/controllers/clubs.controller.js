@@ -142,7 +142,7 @@ async function listClubMembershipRequests(req, res, next) {
       throw new ApiError(404, 'Aucun club associé à ce compte');
     }
 
-    const requests = await ClubMembershipRequest.find({ clubId, status: 'pending' })
+    const requests = await ClubMembershipRequest.find({ clubId })
       .populate('clubId', 'nom description specialite statut')
       .populate('memberId', 'email nom prenom role createdAt')
       .sort({ requestedAt: -1 });
@@ -206,15 +206,65 @@ async function resolveMembershipRequest(req, res, next) {
       });
     }
 
-    await ClubMembershipRequest.deleteOne({ _id: request._id });
+    request.status = 'denied';
+    request.resolvedAt = new Date();
+    request.resolvedBy = req.user._id;
+    await request.save();
+
+    const updatedRequest = await ClubMembershipRequest.findById(request._id)
+      .populate('clubId', 'nom description specialite statut')
+      .populate('memberId', 'email nom prenom role createdAt')
+      .populate('resolvedBy', 'email nom prenom role');
 
     return res.status(200).json({
       success: true,
-      data: {
-        id: request._id.toString(),
-        status: 'denied',
-      },
+      data: serializeMembershipRequest(updatedRequest),
     });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function deleteMembershipRequest(req, res, next) {
+  try {
+    const { requestId } = req.params;
+
+    const user = req.user;
+    if (!user) {
+      throw new ApiError(401, 'Authentification requise');
+    }
+
+    // If user is a club, they can delete requests for their club.
+    if (user.role === 'club') {
+      const clubId = user.clubId;
+      if (!clubId) {
+        throw new ApiError(404, 'Aucun club associé à ce compte');
+      }
+
+      const request = await ClubMembershipRequest.findOne({ _id: requestId, clubId });
+      if (!request) {
+        throw new ApiError(404, 'Demande introuvable');
+      }
+
+      await ClubMembershipRequest.deleteOne({ _id: request._id });
+
+      return res.status(200).json({ success: true, data: { id: request._id.toString() } });
+    }
+
+    // If user is a student, they can delete their own requests.
+    if (user.role === 'etudiant') {
+      const request = await ClubMembershipRequest.findOne({ _id: requestId, memberId: user._id });
+      if (!request) {
+        throw new ApiError(404, 'Demande introuvable');
+      }
+
+      await ClubMembershipRequest.deleteOne({ _id: request._id });
+
+      return res.status(200).json({ success: true, data: { id: request._id.toString() } });
+    }
+
+    // Other roles are not allowed to delete membership requests
+    return next(new ApiError(403, 'Acces refuse pour ce role'));
   } catch (error) {
     return next(error);
   }
@@ -226,4 +276,5 @@ module.exports = {
   listMyMembershipRequests,
   listClubMembershipRequests,
   resolveMembershipRequest,
+  deleteMembershipRequest,
 };

@@ -261,6 +261,15 @@ export async function resolveClubMembershipRequest(requestId, action) {
   }
 }
 
+export async function deleteClubMembershipRequest(requestId) {
+  try {
+    const response = await api.delete(`/clubs/membership-requests/${requestId}`);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
 export async function requestPasswordReset(email) {
   try {
     const response = await api.post('/auth/request-password-reset', { email });

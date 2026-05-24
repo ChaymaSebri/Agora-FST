@@ -3,9 +3,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Users, ShieldCheck, MapPin, Sparkles } from "lucide-react";
+import { Loader2, Users, ShieldCheck, MapPin, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { fetchClubs, fetchMyClubMembershipRequests, requestClubMembership } from "@/services/api";
+import { deleteClubMembershipRequest, fetchClubs, fetchMyClubMembershipRequests, requestClubMembership } from "@/services/api";
 
 type ClubItem = {
   id: string;
@@ -19,6 +19,8 @@ type ClubItem = {
 type ClubRequest = {
   id: string;
   status: string;
+  requestedAt: string | null;
+  resolvedAt: string | null;
   club: { id: string; nom: string } | null;
 };
 
@@ -80,6 +82,26 @@ const Clubs = () => {
     }
   };
 
+  const handleDeleteRequest = async (requestId: string) => {
+    try {
+      setRequestingId(requestId);
+      await deleteClubMembershipRequest(requestId);
+      setRequests((current) => current.filter((request) => request.id !== requestId));
+      toast({
+        title: "Demande supprimée",
+        description: "Vous pouvez renvoyer une nouvelle demande si vous le souhaitez.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error?.message || "Impossible de supprimer la demande.",
+        variant: "destructive",
+      });
+    } finally {
+      setRequestingId(null);
+    }
+  };
+
   const isStudent = user?.role === "etudiant";
 
   return (
@@ -108,6 +130,7 @@ const Clubs = () => {
               const request = requestByClubId.get(club.id);
               const isPending = request?.status === "pending";
               const isMember = request?.status === "accepted";
+              const isDenied = request?.status === "denied";
 
               return (
                 <Card key={club.id} className="border-border shadow-sm">
@@ -134,28 +157,67 @@ const Clubs = () => {
                     {isStudent ? (
                       <div className="flex flex-col gap-3">
                         {isMember ? (
-                          <Badge className="w-fit bg-emerald-600 text-white">Déjà membre</Badge>
+                          <Button variant="hero" disabled>
+                            Membre
+                          </Button>
+                        ) : isDenied ? (
+                          <>
+                            <Button
+                              variant="hero"
+                              disabled
+                              onClick={() => handleRequest(club.id)}
+                            >
+                              Je veux être membre
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-fit"
+                              onClick={() => request && handleDeleteRequest(request.id)}
+                              disabled={requestingId === request?.id}
+                            >
+                              {requestingId === request?.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-2 h-4 w-4" />
+                              )}
+                              Supprimer
+                            </Button>
+                          </>
                         ) : isPending ? (
-                          <Badge variant="outline" className="w-fit">Demande en attente</Badge>
+                          <>
+                            <Button
+                              variant="hero"
+                              onClick={() => request && handleDeleteRequest(request.id)}
+                              disabled={requestingId === request?.id}
+                            >
+                              {requestingId === request?.id ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Annulation...
+                                </>
+                              ) : (
+                                "Annuler la demande"
+                              )}
+                            </Button>
+                          </>
                         ) : null}
-                        <Button
-                          variant="hero"
-                          disabled={Boolean(requestingId) || isPending || isMember}
-                          onClick={() => handleRequest(club.id)}
-                        >
-                          {requestingId === club.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Envoi...
-                            </>
-                          ) : isMember ? (
-                            "Membre"
-                          ) : isPending ? (
-                            "Demande envoyée"
-                          ) : (
-                            "Je veux être membre"
-                          )}
-                        </Button>
+                        {!isMember && !isPending && !isDenied && (
+                          <Button
+                            variant="hero"
+                            disabled={Boolean(requestingId)}
+                            onClick={() => handleRequest(club.id)}
+                          >
+                            {requestingId === club.id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Envoi...
+                              </>
+                            ) : (
+                              "Je veux être membre"
+                            )}
+                          </Button>
+                        )}
                       </div>
                     ) : (
                       <div className="text-sm text-muted-foreground">

@@ -68,9 +68,7 @@ const Profile = () => {
   const [userCompetenceIds, setUserCompetenceIds] = useState<string[]>([]);
   const [eventInvitations, setEventInvitations] = useState<EventInvitation[]>([]);
   const [respondingInvitationId, setRespondingInvitationId] = useState<string | null>(null);
-  const [clubMembershipRequests, setClubMembershipRequests] = useState<
-    Array<{ id: string; status: string; club: { id: string; nom: string } | null }>
-  >([]);
+  const [acceptedClubMemberships, setAcceptedClubMemberships] = useState<Array<{ id: string; club: { id: string; nom: string } | null }>>([]);
 
   const displayRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : user?.role || "—";
 
@@ -128,15 +126,18 @@ const Profile = () => {
     };
     const loadClubMembershipRequests = async () => {
       if (user?.role !== "etudiant") {
-        setClubMembershipRequests([]);
+        setAcceptedClubMemberships([]);
         return;
       }
 
       try {
         const items = await fetchMyClubMembershipRequests();
-        setClubMembershipRequests(items as Array<{ id: string; status: string; club: { id: string; nom: string } | null }>);
+        setAcceptedClubMemberships(
+          (items as Array<{ id: string; status: string; club: { id: string; nom: string } | null }>)
+            .filter((request) => request.status === "accepted"),
+        );
       } catch {
-        setClubMembershipRequests([]);
+        setAcceptedClubMemberships([]);
       }
     };
 
@@ -367,38 +368,22 @@ const Profile = () => {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                  <div className="text-sm font-medium text-foreground">Mes clubs</div>
-                  {clubMembershipRequests.filter((request) => request.status === "accepted").length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Aucune adhésion validée.</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {clubMembershipRequests
-                        .filter((request) => request.status === "accepted")
-                        .map((request) => (
-                          <Badge key={request.id} className="bg-emerald-600 text-white">
+                <div className="flex items-start gap-3">
+                  <Users className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Clubs</div>
+                    <div className="text-sm text-foreground flex flex-wrap gap-2">
+                      {acceptedClubMemberships.length === 0 ? (
+                        <span className="text-sm text-muted-foreground">Aucune adhésion validée.</span>
+                      ) : (
+                        acceptedClubMemberships.map((request) => (
+                          <span key={request.id} className="inline-block bg-muted px-2 py-0.5 rounded text-xs">
                             {request.club?.nom || "Club"}
-                          </Badge>
-                        ))}
+                          </span>
+                        ))
+                      )}
                     </div>
-                  )}
-                </div>
-
-                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                  <div className="text-sm font-medium text-foreground">Demandes en attente</div>
-                  {clubMembershipRequests.filter((request) => request.status === "pending").length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Aucune demande en attente.</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {clubMembershipRequests
-                        .filter((request) => request.status === "pending")
-                        .map((request) => (
-                          <Badge key={request.id} variant="outline">
-                            {request.club?.nom || "Club"}
-                          </Badge>
-                        ))}
-                    </div>
-                  )}
+                  </div>
                 </div>
               </>
             )}

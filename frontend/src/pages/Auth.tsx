@@ -7,6 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { isStrongPassword, getPasswordPolicyMessage } from "@/lib/passwordValidation";
@@ -616,14 +624,14 @@ const Auth = () => {
                   </div>
                 </form>
 
-                {showForgotPassword && (
-                  <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 space-y-4">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">Réinitialiser le mot de passe</p>
-                      <p className="text-sm text-muted-foreground">
+                <AlertDialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Réinitialiser le mot de passe</AlertDialogTitle>
+                      <AlertDialogDescription>
                         Entrez votre email et nous vous enverrons un lien de réinitialisation.
-                      </p>
-                    </div>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
 
                     <form onSubmit={handleForgotPassword} className="space-y-3">
                       <div className="space-y-2">
@@ -636,18 +644,24 @@ const Auth = () => {
                           onChange={(e) => setForgotPasswordEmail(e.target.value)}
                         />
                       </div>
-                      <div className="flex gap-2">
-                        <Button type="submit" variant="hero" className="flex-1" disabled={isLoading}>
+
+                      <AlertDialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowForgotPassword(false)}
+                          disabled={isLoading}
+                        >
+                          Annuler
+                        </Button>
+                        <Button type="submit" variant="hero" disabled={isLoading}>
                           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                           Envoyer le lien
                         </Button>
-                        <Button type="button" variant="outline" onClick={() => setShowForgotPassword(false)}>
-                          Annuler
-                        </Button>
-                      </div>
+                      </AlertDialogFooter>
                     </form>
-                  </div>
-                )}
+                  </AlertDialogContent>
+                </AlertDialog>
               </TabsContent>
 
               <TabsContent value="signup">
@@ -845,14 +859,22 @@ const Auth = () => {
                   </Button>
                 </form>
 
-                {pendingVerificationEmail && (
-                  <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 space-y-4">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">Verification email requise</p>
-                      <p className="text-sm text-muted-foreground">
-                        Un code a ete envoye a {pendingVerificationEmail}. Saisissez-le pour activer votre compte.
-                      </p>
-                    </div>
+                <AlertDialog
+                  open={Boolean(pendingVerificationEmail)}
+                  onOpenChange={(open) => {
+                    if (!open) {
+                      setPendingVerificationEmail("");
+                      setVerificationCode("");
+                    }
+                  }}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Vérification email requise</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Un code a été envoyé à {pendingVerificationEmail}. Saisissez-le pour activer votre compte.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
 
                     <form onSubmit={handleVerifyEmail} className="space-y-3">
                       <div className="space-y-2">
@@ -868,8 +890,11 @@ const Auth = () => {
                         />
                       </div>
 
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button type="submit" variant="hero" className="flex-1" disabled={isLoading}>
+                      <AlertDialogFooter>
+                        <Button type="button" variant="outline" onClick={handleResendCode} disabled={isLoading}>
+                          Renvoyer le code
+                        </Button>
+                        <Button type="submit" variant="hero" disabled={isLoading}>
                           {isLoading ? (
                             <>
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -879,13 +904,10 @@ const Auth = () => {
                             "Verifier l'email"
                           )}
                         </Button>
-                        <Button type="button" variant="outline" className="flex-1" onClick={handleResendCode} disabled={isLoading}>
-                          Renvoyer le code
-                        </Button>
-                      </div>
+                      </AlertDialogFooter>
                     </form>
-                  </div>
-                )}
+                  </AlertDialogContent>
+                </AlertDialog>
               </TabsContent>
             </Tabs>
           </CardContent>

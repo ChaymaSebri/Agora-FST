@@ -161,7 +161,7 @@ const clubMembershipRequestSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'accepted'],
+      enum: ['pending', 'accepted', 'denied'],
       default: 'pending',
     },
     requestedAt: {

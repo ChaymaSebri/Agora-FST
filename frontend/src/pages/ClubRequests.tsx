@@ -3,14 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowLeft, Check, X, Inbox } from "lucide-react";
+import { Loader2, ArrowLeft, Check, X, Inbox, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { fetchClubMembershipRequests, resolveClubMembershipRequest } from "@/services/api";
+import { deleteClubMembershipRequest, fetchClubMembershipRequests, resolveClubMembershipRequest } from "@/services/api";
 
 type RequestItem = {
   id: string;
   status: string;
   requestedAt: string | null;
+  resolvedAt: string | null;
   club: { id: string; nom: string } | null;
   member: { id: string; email: string; full_name: string } | null;
 };
@@ -20,6 +21,18 @@ const ClubRequests = () => {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [requests, setRequests] = useState<RequestItem[]>([]);
+
+  const getStatusLabel = (status: string) => {
+    if (status === "accepted") return "Demande acceptée";
+    if (status === "denied") return "Demande refusée";
+    return "Demande en attente";
+  };
+
+  const getStatusVariant = (status: string) => {
+    if (status === "accepted") return "default" as const;
+    if (status === "denied") return "destructive" as const;
+    return "outline" as const;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -44,16 +57,36 @@ const ClubRequests = () => {
   const handleAction = async (requestId: string, action: "accept" | "deny") => {
     try {
       setSavingId(requestId);
-      await resolveClubMembershipRequest(requestId, action);
-      setRequests((current) => current.filter((request) => request.id !== requestId));
+      const updated = await resolveClubMembershipRequest(requestId, action);
+      setRequests((current) => current.map((request) => (request.id === requestId ? (updated as RequestItem) : request)));
       toast({
         title: action === "accept" ? "Membre accepté" : "Demande refusée",
-        description: action === "accept" ? "Le membre a été ajouté au club." : "La demande a été supprimée.",
+        description: action === "accept" ? "Le membre a été ajouté au club." : "La demande a été marquée comme refusée.",
       });
     } catch (error: any) {
       toast({
         title: "Erreur",
         description: error?.message || "Impossible de traiter la demande.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleDelete = async (requestId: string) => {
+    try {
+      setSavingId(requestId);
+      await deleteClubMembershipRequest(requestId);
+      setRequests((current) => current.filter((request) => request.id !== requestId));
+      toast({
+        title: "Demande supprimée",
+        description: "La demande a été retirée de la liste.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error?.message || "Impossible de supprimer la demande.",
         variant: "destructive",
       });
     } finally {
@@ -90,7 +123,7 @@ const ClubRequests = () => {
               </div>
             ) : requests.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                Aucune demande en attente pour le moment.
+                Aucune demande pour le moment.
               </div>
             ) : (
               <div className="space-y-4">
@@ -104,26 +137,40 @@ const ClubRequests = () => {
                         {request.member?.full_name || request.member?.email || "Utilisateur"}
                       </div>
                       <div className="text-sm text-muted-foreground">{request.member?.email}</div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Badge variant={getStatusVariant(request.status)}>{getStatusLabel(request.status)}</Badge>
+                      </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    {request.status === "pending" ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="hero"
+                          onClick={() => handleAction(request.id, "accept")}
+                          disabled={savingId === request.id}
+                        >
+                          {savingId === request.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                          Accepter
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => handleAction(request.id, "deny")}
+                          disabled={savingId === request.id}
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Refuser
+                        </Button>
+                      </div>
+                    ) : (
                       <Button
-                        variant="hero"
-                        onClick={() => handleAction(request.id, "accept")}
+                        variant="outline"
+                        onClick={() => handleDelete(request.id)}
                         disabled={savingId === request.id}
                       >
-                        {savingId === request.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                        Accepter
+                        {savingId === request.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                        Supprimer
                       </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleAction(request.id, "deny")}
-                        disabled={savingId === request.id}
-                      >
-                        <X className="mr-2 h-4 w-4" />
-                        Refuser
-                      </Button>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>
