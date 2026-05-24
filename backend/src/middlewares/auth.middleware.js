@@ -16,6 +16,31 @@ function extractBearerToken(authorizationHeader) {
   return token;
 }
 
+async function authenticateOptional(req, res, next) {
+  try {
+    const token = extractBearerToken(req.headers.authorization);
+    if (!token) {
+      return next();
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return next();
+    }
+
+    const payload = jwt.verify(token, secret);
+    const user = await Utilisateur.findById(payload.sub).select('-motDePasse');
+
+    if (user) {
+      req.user = user;
+    }
+
+    return next();
+  } catch {
+    return next();
+  }
+}
+
 async function authenticate(req, res, next) {
   try {
     const token = extractBearerToken(req.headers.authorization);
@@ -66,5 +91,6 @@ function authorizeRoles(...allowedRoles) {
 
 module.exports = {
   authenticate,
+  authenticateOptional,
   authorizeRoles,
 };

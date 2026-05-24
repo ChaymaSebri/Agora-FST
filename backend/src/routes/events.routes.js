@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const eventsController = require('../controllers/events.controller');
-const { authenticate } = require('../middlewares/auth.middleware');
+const { authenticate, authenticateOptional } = require('../middlewares/auth.middleware');
 
-router.get('/', eventsController.listEvents);
+router.get('/', authenticateOptional, eventsController.listEvents);
 router.get('/participations/me', authenticate, eventsController.listMyParticipations);
 router.get('/invitations/me', authenticate, eventsController.listMyEventInvitations);
 router.get('/:id/invitations', authenticate, eventsController.listEventInvitations);
