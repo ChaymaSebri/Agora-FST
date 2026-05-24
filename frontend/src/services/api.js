@@ -54,6 +54,39 @@ export function toUiClub(item) {
   };
 }
 
+function toUiUser(item) {
+  return {
+    id: item.id,
+    email: item.email || '',
+    role: item.role || '',
+    full_name: item.full_name || '',
+  };
+}
+
+function toUiEventInvitation(item) {
+  return {
+    id: item.id,
+    enseignantId: item.enseignantId || null,
+    statut: item.statut || 'pending',
+    invitedAt: item.invitedAt || null,
+    respondedAt: item.respondedAt || null,
+    event: item.event
+      ? {
+          id: item.event.id,
+          title: item.event.title || '',
+          date: item.event.date || null,
+          type: item.event.type || 'autre',
+        }
+      : null,
+    club: item.club
+      ? {
+          id: item.club.id,
+          nom: item.club.nom || '',
+        }
+      : null,
+  };
+}
+
 function toUiClubMembershipRequest(item) {
   return {
     id: item.id,
@@ -102,6 +135,7 @@ function toUiEvent(item) {
     coOrganizerClubIds: Array.isArray(item.coOrganizerClubIds) ? item.coOrganizerClubIds : [],
     coOrganizerClubNames: Array.isArray(item.coOrganizerClubNames) ? item.coOrganizerClubNames : [],
     competenceIds: Array.isArray(item.competenceIds) ? item.competenceIds : [],
+    competenceNames: Array.isArray(item.competenceNames) ? item.competenceNames : [],
   };
 }
 
@@ -173,6 +207,20 @@ export async function fetchClubs() {
   } catch (error) {
     rethrowApiError(error);
   }
+}
+
+export async function fetchUsers(params = {}) {
+  try {
+    const response = await api.get('/users', { params });
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiUser);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchTeachers() {
+  return fetchUsers({ role: 'enseignant' });
 }
 
 export async function requestClubMembership(clubId) {
@@ -251,6 +299,7 @@ export async function createEvent(payload) {
     type: UI_TO_API_TYPE[payload.type] || 'autre',
     coOrganizerClubIds: payload.coOrganizerClubIds || [],
     competenceIds: payload.competenceIds || [],
+    inviteTeacherIds: payload.inviteTeacherIds || [],
   };
 
   try {
@@ -271,6 +320,7 @@ export async function updateEvent(id, payload) {
     type: UI_TO_API_TYPE[payload.type] || 'autre',
     coOrganizerClubIds: payload.coOrganizerClubIds || [],
     competenceIds: payload.competenceIds || [],
+    inviteTeacherIds: payload.inviteTeacherIds || [],
   };
 
   try {
@@ -324,6 +374,47 @@ export async function listMyParticipations(eventIds = []) {
       params: { eventIds: sanitizedEventIds.join(',') },
     });
     return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchMyEventInvitations() {
+  try {
+    const response = await api.get('/events/invitations/me');
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiEventInvitation);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function respondToEventInvitation(invitationId, action) {
+  try {
+    const response = await api.patch(`/events/invitations/${invitationId}`, { action });
+    return toUiEventInvitation(extractResponse(response));
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function fetchEventInvitations(eventId) {
+  try {
+    const response = await api.get(`/events/${eventId}/invitations`);
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiEventInvitation);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
+export async function inviteTeachersToEvent(eventId, teacherIds = []) {
+  try {
+    const response = await api.post(`/events/${eventId}/invitations`, {
+      teacherIds,
+    });
+    const data = extractResponse(response);
+    return (data.items || []).map(toUiEventInvitation);
   } catch (error) {
     rethrowApiError(error);
   }

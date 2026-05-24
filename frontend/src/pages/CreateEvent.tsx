@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Loader2, MapPin, Users, ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { ApiError, createEvent, fetchClubs, fetchCompetences } from "@/services/api";
+import { ApiError, createEvent, fetchClubs, fetchCompetences, fetchTeachers } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const eventSchema = z.object({
@@ -28,6 +28,8 @@ const CreateEvent = () => {
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [clubs, setClubs] = useState<Array<{ id: string; nom: string }>>([]);
   const [coOrganizerClubIds, setCoOrganizerClubIds] = useState<string[]>([]);
+  const [teachers, setTeachers] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
+  const [inviteTeacherIds, setInviteTeacherIds] = useState<string[]>([]);
   const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
   const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
   const [selectedClubToAdd, setSelectedClubToAdd] = useState("");
@@ -63,6 +65,15 @@ const CreateEvent = () => {
     };
 
     loadClubs();
+    const loadTeachers = async () => {
+      try {
+        const items = await fetchTeachers();
+        setTeachers(items.map((teacher) => ({ id: teacher.id, full_name: teacher.full_name, email: teacher.email })));
+      } catch {
+        setTeachers([]);
+      }
+    };
+    loadTeachers();
     const loadCompetences = async () => {
       try {
         const items = await fetchCompetences();
@@ -129,6 +140,7 @@ const CreateEvent = () => {
         maxAttendees,
         coOrganizerClubIds,
         competenceIds: selectedCompetenceIds,
+        inviteTeacherIds,
       });
       
       toast({
@@ -340,6 +352,36 @@ const CreateEvent = () => {
                     ))}
                   </div>
                 ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Enseignants invités (optionnel)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Invitez un ou plusieurs enseignants à recevoir l'invitation de cet événement.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {teachers.map((teacher) => (
+                    <label key={teacher.id} className="inline-flex items-center gap-2 text-sm rounded-md border border-border px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={inviteTeacherIds.includes(teacher.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setInviteTeacherIds((current) => Array.from(new Set([...current, teacher.id])));
+                          } else {
+                            setInviteTeacherIds((current) => current.filter((id) => id !== teacher.id));
+                          }
+                        }}
+                      />
+                      <span className="truncate">
+                        {teacher.full_name || teacher.email}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {teachers.length === 0 && (
+                  <div className="text-xs text-muted-foreground">Aucun enseignant trouvé.</div>
+                )}
               </div>
 
               <div className="space-y-2">

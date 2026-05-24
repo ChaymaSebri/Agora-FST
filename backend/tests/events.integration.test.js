@@ -4,7 +4,7 @@ const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const jwt = require('jsonwebtoken');
 
 const app = require('../src/app');
-const { Evenement, ParticipationEvenement, Utilisateur, Club } = require('../src/models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club, EventInvitation } = require('../src/models');
 
 jest.setTimeout(120000);
 
@@ -56,6 +56,18 @@ async function createClubUser(overrides = {}) {
   return user;
 }
 
+async function createTeacher(overrides = {}) {
+  return Utilisateur.create({
+    nom: 'Smith',
+    prenom: 'Jane',
+    email: `teacher_${Date.now()}_${Math.random().toString(16).slice(2)}@test.com`,
+    motDePasse: 'password123',
+    role: 'enseignant',
+    grade: 'Maître de conférences',
+    ...overrides,
+  });
+}
+
 async function createEvent({ organisateurId, clubId, overrides = {} }) {
   return Evenement.create({
     titre: 'Atelier IA',
@@ -95,6 +107,7 @@ beforeEach(async () => {
 
   await Promise.all([
     ParticipationEvenement.deleteMany({}),
+    EventInvitation.deleteMany({}),
     Evenement.deleteMany({}),
     Club.deleteMany({}),
     Utilisateur.deleteMany({}),
@@ -777,6 +790,57 @@ describe('Events API integration', () => {
       .get('/api/events/participations/me')
       .set('Authorization', buildAuthHeader(clubUser))
       .query({ eventIds: new mongoose.Types.ObjectId().toString() });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  test('club can invite teachers on create and teachers can view invitations in profile', async () => {
+    const ownerClub = await createClubUser();
+    const teacher = await createTeacher();
+
+    const createResponse = await request(app)
+      .post('/api/events')
+      .set('Authorization', buildAuthHeader(ownerClub))
+      .send({
+        titre: 'Conférence IA',
+        description: 'Présentation et discussion sur l IA',
+        date: '2026-08-20T09:00:00.000Z',
+        lieu: 'Amphi 1',
+        capacite: 80,
+        type: 'conference',
+        inviteTeacherIds: [teacher._id.toString()],
+      });
+
+    expect(createResponse.status).toBe(201);
+
+    const eventId = createResponse.body.data.id;
+    const invitationsResponse = await request(app)
+      .get(`/api/events/${eventId}/invitations`)
+      .set('Authorization', buildAuthHeader(ownerClub));
+
+    expect(invitationsResponse.status).toBe(200);
+    expect(invitationsResponse.body.success).toBe(true);
+    expect(invitationsResponse.body.data.items).toHaveLength(1);
+    expect(invitationsResponse.body.data.items[0].enseignantId).toBe(teacher._id.toString());
+
+    const teacherInboxResponse = await request(app)
+      .get('/api/events/invitations/me')
+      .set('Authorization', buildAuthHeader(teacher));
+
+    expect(teacherInboxResponse.status).toBe(200);
+    expect(teacherInboxResponse.body.success).toBe(true);
+    expect(teacherInboxResponse.body.data.items).toHaveLength(1);
+    expect(teacherInboxResponse.body.data.items[0].event.id).toBe(eventId);
+  });
+
+  test('teacher invitation profile endpoint rejects non teachers', async () => {
+    const clubUser = await createClubUser();
+
+    const response = await request(app)
+      .get('/api/events/invitations/me')
+      .set('Authorization', buildAuthHeader(clubUser));
 
     expect(response.status).toBe(403);
     expect(response.body.success).toBe(false);

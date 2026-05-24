@@ -1,5 +1,12 @@
 function errorMiddleware(err, req, res, next) {
-  console.error(err);
+  const status = err.status || 500;
+
+  if (status >= 500) {
+    console.error(err);
+  } else {
+    console.warn(`[${status}] ${err.message}`);
+  }
+
   res.status(err.status || 500).json({
     success: false,
     error: {

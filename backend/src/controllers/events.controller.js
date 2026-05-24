@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Evenement, ParticipationEvenement, Utilisateur, Club, Competence } = require('../models');
+const { Evenement, ParticipationEvenement, Utilisateur, Club, Competence, EventInvitation } = require('../models');
 
 const EVENT_TYPES = ['conference', 'atelier', 'hackathon', 'sortie', 'autre'];
 const ACTIVE_PARTICIPATION_STATUSES = ['inscrit', 'confirme', 'present'];
@@ -10,6 +10,7 @@ const ERROR_CODES = {
   ALREADY_REGISTERED: 'ALREADY_REGISTERED',
   EVENT_FULL: 'EVENT_FULL',
   PARTICIPATION_NOT_FOUND: 'PARTICIPATION_NOT_FOUND',
+  INVITATION_NOT_FOUND: 'INVITATION_NOT_FOUND',
   FORBIDDEN: 'FORBIDDEN',
   INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
 };
@@ -62,6 +63,10 @@ function normalizeEvent(doc, participantsCount = 0) {
   const coOrganizerClubNames = coOrganizerSources
     .map((club) => (club && typeof club === 'object' ? club.nom : null))
     .filter(Boolean);
+  const competenceSources = Array.isArray(source.competenceIds) ? source.competenceIds : [];
+  const competenceNames = competenceSources
+    .map((competence) => (competence && typeof competence === 'object' ? competence.nom : null))
+    .filter(Boolean);
 
   return {
     id: source._id.toString(),
@@ -79,6 +84,7 @@ function normalizeEvent(doc, participantsCount = 0) {
     competenceIds: Array.isArray(source.competenceIds)
       ? source.competenceIds.map((competenceId) => (competenceId && competenceId._id ? competenceId._id.toString() : String(competenceId)))
       : [],
+    competenceNames,
     coOrganizerClubIds,
     coOrganizerClubNames,
     createdAt: source.createdAt,
@@ -96,6 +102,36 @@ function normalizeParticipation(doc) {
     commentaire: source.commentaire,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
+  };
+}
+
+function normalizeInvitation(doc) {
+  const source = typeof doc.toObject === 'function' ? doc.toObject() : doc;
+  const eventSource = source.evenementId;
+  const clubSource = source.clubId;
+
+  return {
+    id: source._id.toString(),
+    enseignantId: source.enseignantId
+      ? (source.enseignantId._id ? source.enseignantId._id.toString() : String(source.enseignantId))
+      : null,
+    statut: source.statut,
+    invitedAt: source.invitedAt,
+    respondedAt: source.respondedAt,
+    event: eventSource
+      ? {
+          id: eventSource._id ? String(eventSource._id) : String(eventSource),
+          title: eventSource.titre || '',
+          date: eventSource.date || null,
+          type: eventSource.type || 'autre',
+        }
+      : null,
+    club: clubSource
+      ? {
+          id: clubSource._id ? String(clubSource._id) : String(clubSource),
+          nom: clubSource.nom || '',
+        }
+      : null,
   };
 }
 
@@ -179,6 +215,23 @@ function normalizeCompetenceIds(rawCompetenceIds) {
   return Array.from(unique);
 }
 
+function normalizeTeacherIds(rawTeacherIds) {
+  if (!Array.isArray(rawTeacherIds)) {
+    return [];
+  }
+
+  const unique = new Set();
+
+  rawTeacherIds.forEach((teacherId) => {
+    if (!teacherId) return;
+    const normalized = String(teacherId).trim();
+    if (!normalized) return;
+    unique.add(normalized);
+  });
+
+  return Array.from(unique);
+}
+
 function isTransactionSupportError(error) {
   const message = String(error?.message || '').toLowerCase();
   return (
@@ -209,6 +262,24 @@ async function runWithOptionalTransaction(transactionWork, fallbackWork) {
       session.endSession();
     }
   }
+}
+
+async function syncEventTeacherInvitations(eventId, clubId, inviterId, teacherIds, session) {
+  await EventInvitation.deleteMany({ evenementId: eventId }).session(session);
+
+  if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
+    return [];
+  }
+
+  const invitations = teacherIds.map((enseignantId) => ({
+    evenementId: eventId,
+    enseignantId,
+    clubId,
+    invitedById: inviterId,
+    statut: 'pending',
+  }));
+
+  return EventInvitation.insertMany(invitations, { session });
 }
 
 async function createParticipationWithoutTransaction({ eventId, utilisateurId, commentaire }) {
@@ -348,6 +419,17 @@ function validateEventPayload(payload, { partial = false } = {}) {
     }
   }
 
+  if (payload.inviteTeacherIds !== undefined) {
+    if (!Array.isArray(payload.inviteTeacherIds)) {
+      errors.push('inviteTeacherIds must be an array of ObjectId');
+    } else {
+      const invalidTeacherId = payload.inviteTeacherIds.find((teacherId) => !mongoose.Types.ObjectId.isValid(teacherId));
+      if (invalidTeacherId) {
+        errors.push('inviteTeacherIds contains invalid ObjectId');
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -396,6 +478,7 @@ async function listEvents(req, res, next) {
       Evenement.find(filter)
         .populate('clubId', 'nom')
         .populate('coOrganizerClubIds', 'nom')
+        .populate('competenceIds', 'nom')
         .sort({ [sortBy]: sortOrder })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -452,7 +535,8 @@ async function getEventById(req, res, next) {
 
     const event = await Evenement.findById(id)
       .populate('clubId', 'nom')
-      .populate('coOrganizerClubIds', 'nom');
+      .populate('coOrganizerClubIds', 'nom')
+      .populate('competenceIds', 'nom');
 
     if (!event) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
@@ -520,6 +604,23 @@ async function createEvent(req, res, next) {
       }
     }
 
+    const inviteTeacherIds = normalizeTeacherIds(payload.inviteTeacherIds);
+    if (inviteTeacherIds.length > 0) {
+      const existingTeachersCount = await Utilisateur.countDocuments({
+        _id: { $in: inviteTeacherIds },
+        role: 'enseignant',
+      });
+
+      if (existingTeachersCount !== inviteTeacherIds.length) {
+        return sendError(
+          res,
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          'Some inviteTeacherIds do not exist or are not teachers',
+        );
+      }
+    }
+
     const created = await Evenement.create({
       titre: payload.titre.trim(),
       description: payload.description,
@@ -533,6 +634,18 @@ async function createEvent(req, res, next) {
       competenceIds,
       coOrganizerClubIds,
     });
+
+    if (inviteTeacherIds.length > 0) {
+      await EventInvitation.create(
+        inviteTeacherIds.map((enseignantId) => ({
+          evenementId: created._id,
+          enseignantId,
+          clubId: req.user.clubId,
+          invitedById: req.user._id,
+          statut: 'pending',
+        })),
+      );
+    }
 
     return sendSuccess(res, 201, {
       id: created._id.toString(),
@@ -584,7 +697,7 @@ async function updateEvent(req, res, next) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, errors.join('; '));
     }
 
-    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds', 'competenceIds'];
+    const updatableFields = ['titre', 'description', 'date', 'lieu', 'capacite', 'type', 'coOrganizerClubIds', 'competenceIds', 'inviteTeacherIds'];
     const update = {};
     updatableFields.forEach((field) => {
       if (payload[field] !== undefined) {
@@ -644,6 +757,26 @@ async function updateEvent(req, res, next) {
       }
     }
 
+    if (update.inviteTeacherIds !== undefined) {
+      update.inviteTeacherIds = normalizeTeacherIds(update.inviteTeacherIds);
+
+      if (update.inviteTeacherIds.length > 0) {
+        const existingTeachersCount = await Utilisateur.countDocuments({
+          _id: { $in: update.inviteTeacherIds },
+          role: 'enseignant',
+        });
+
+        if (existingTeachersCount !== update.inviteTeacherIds.length) {
+          return sendError(
+            res,
+            400,
+            ERROR_CODES.VALIDATION_ERROR,
+            'Some inviteTeacherIds do not exist or are not teachers',
+          );
+        }
+      }
+    }
+
     if (Object.keys(update).length === 0) {
       return sendError(
         res,
@@ -669,6 +802,31 @@ async function updateEvent(req, res, next) {
 
     if (!updated) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    if (payload.inviteTeacherIds !== undefined) {
+      const inviteTeacherIds = normalizeTeacherIds(payload.inviteTeacherIds);
+      const syncTransaction = async (session) => {
+        await syncEventTeacherInvitations(updated._id, updated.clubId, req.user._id, inviteTeacherIds, session);
+      };
+
+      await runWithOptionalTransaction(
+        syncTransaction,
+        async () => {
+          await EventInvitation.deleteMany({ evenementId: updated._id });
+          if (inviteTeacherIds.length > 0) {
+            await EventInvitation.create(
+              inviteTeacherIds.map((enseignantId) => ({
+                evenementId: updated._id,
+                enseignantId,
+                clubId: req.user.clubId,
+                invitedById: req.user._id,
+                statut: 'pending',
+              })),
+            );
+          }
+        },
+      );
     }
 
     return sendSuccess(res, 200, {
@@ -1017,6 +1175,246 @@ async function listMyParticipations(req, res, next) {
   }
 }
 
+async function inviteTeachersToEvent(req, res, next) {
+  try {
+    if (!isRequesterClub(req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only club accounts can invite teachers to an event',
+      );
+    }
+
+    const { id } = req.params;
+    const rawTeacherIds = req.body?.teacherIds;
+    const teacherIds = normalizeTeacherIds(rawTeacherIds);
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    const event = await Evenement.findById(id);
+    if (!event) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    if (!isEventOwnedByRequesterClub(event, req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'You can only invite teachers to events created by your club',
+      );
+    }
+
+    if (teacherIds.length === 0) {
+      return sendSuccess(res, 200, { items: [] });
+    }
+
+    const invalidTeacherId = teacherIds.find((teacherId) => !mongoose.Types.ObjectId.isValid(teacherId));
+    if (invalidTeacherId) {
+      return sendError(
+        res,
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        'teacherIds contains invalid ObjectId',
+      );
+    }
+
+    const existingTeachersCount = await Utilisateur.countDocuments({
+      _id: { $in: teacherIds },
+      role: 'enseignant',
+    });
+
+    if (existingTeachersCount !== teacherIds.length) {
+      return sendError(
+        res,
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        'Some teacherIds do not exist or are not teachers',
+      );
+    }
+
+    await EventInvitation.deleteMany({ evenementId: event._id, enseignantId: { $in: teacherIds } });
+
+    const createdInvitations = await EventInvitation.insertMany(
+      teacherIds.map((enseignantId) => ({
+        evenementId: event._id,
+        enseignantId,
+        clubId: req.user.clubId,
+        invitedById: req.user._id,
+        statut: 'pending',
+      })),
+    );
+
+    return sendSuccess(res, 201, {
+      items: createdInvitations.map(normalizeInvitation),
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return sendError(
+        res,
+        409,
+        ERROR_CODES.VALIDATION_ERROR,
+        'Some invitations already exist',
+      );
+    }
+
+    console.error(error);
+    return sendError(
+      res,
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
+      'Unexpected error while inviting teachers to event',
+    );
+  }
+}
+
+async function listMyEventInvitations(req, res, next) {
+  try {
+    if (req.user?.role !== 'enseignant') {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only teachers can access their invitations',
+      );
+    }
+
+    const invitations = await EventInvitation.find({ enseignantId: req.user._id })
+      .populate({ path: 'evenementId', select: 'titre date type', populate: { path: 'clubId', select: 'nom' } })
+      .populate('clubId', 'nom')
+      .sort({ invitedAt: -1 });
+
+    return sendSuccess(res, 200, {
+      items: invitations.map(normalizeInvitation),
+    });
+  } catch (error) {
+    console.error(error);
+    return sendError(
+      res,
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
+      'Unexpected error while listing teacher invitations',
+    );
+  }
+}
+
+async function listEventInvitations(req, res, next) {
+  try {
+    if (!isRequesterClub(req) && req.user?.role !== 'admin') {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only club accounts can access event invitations',
+      );
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    const event = await Evenement.findById(id);
+    if (!event) {
+      return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+    }
+
+    if (req.user?.role !== 'admin' && !isEventOwnedByRequesterClub(event, req)) {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'You can only access invitations for events created by your club',
+      );
+    }
+
+    const invitations = await EventInvitation.find({ evenementId: event._id })
+      .populate('enseignantId', 'nom prenom email')
+      .sort({ invitedAt: -1 });
+
+    return sendSuccess(res, 200, {
+      items: invitations.map(normalizeInvitation),
+    });
+  } catch (error) {
+    console.error(error);
+    return sendError(
+      res,
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
+      'Unexpected error while listing event invitations',
+    );
+  }
+}
+
+async function respondToEventInvitation(req, res, next) {
+  try {
+    if (req.user?.role !== 'enseignant') {
+      return sendError(
+        res,
+        403,
+        ERROR_CODES.FORBIDDEN,
+        'Only teachers can respond to event invitations',
+      );
+    }
+
+    const { id } = req.params;
+    const action = String(req.body?.action || '').trim().toLowerCase();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return sendError(res, 404, ERROR_CODES.INVITATION_NOT_FOUND, 'Invitation not found');
+    }
+
+    if (!['accept', 'decline'].includes(action)) {
+      return sendError(
+        res,
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        'action must be either accept or decline',
+      );
+    }
+
+    const invitation = await EventInvitation.findOne({
+      _id: id,
+      enseignantId: req.user._id,
+    });
+
+    if (!invitation) {
+      return sendError(res, 404, ERROR_CODES.INVITATION_NOT_FOUND, 'Invitation not found');
+    }
+
+    if (invitation.statut !== 'pending') {
+      return sendError(
+        res,
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        'Invitation has already been answered',
+      );
+    }
+
+    invitation.statut = action === 'accept' ? 'accepted' : 'declined';
+    invitation.respondedAt = new Date();
+    await invitation.save();
+
+    const updatedInvitation = await EventInvitation.findById(invitation._id)
+      .populate({ path: 'evenementId', select: 'titre date type', populate: { path: 'clubId', select: 'nom' } })
+      .populate('clubId', 'nom');
+
+    return sendSuccess(res, 200, normalizeInvitation(updatedInvitation));
+  } catch (error) {
+    console.error(error);
+    return sendError(
+      res,
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
+      'Unexpected error while responding to invitation',
+    );
+  }
+}
+
 async function listParticipations(req, res, next) {
   try {
     const { id } = req.params;
@@ -1078,5 +1476,9 @@ module.exports = {
   createParticipation,
   deleteParticipation,
   listMyParticipations,
+  inviteTeachersToEvent,
+  listMyEventInvitations,
+  listEventInvitations,
+  respondToEventInvitation,
   listParticipations,
 };

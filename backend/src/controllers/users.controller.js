@@ -85,7 +85,14 @@ function sanitizeUserProfile(user) {
 }
 
 async function listUsers(req, res) {
-  const users = await Utilisateur.find().select('email role nom prenom createdAt').limit(100);
+  const filter = {};
+  const role = String(req.query.role || '').trim();
+
+  if (role) {
+    filter.role = role;
+  }
+
+  const users = await Utilisateur.find(filter).select('email role nom prenom createdAt').limit(100);
   res.json({
     items: users.map((user) => ({
       id: user._id,

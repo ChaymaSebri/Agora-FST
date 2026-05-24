@@ -297,6 +297,49 @@ participationEvenementSchema.index(
   { unique: true }
 );
 
+const eventInvitationSchema = new Schema(
+  {
+    evenementId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Evenement',
+      required: true,
+    },
+    enseignantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    clubId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Club',
+      required: true,
+    },
+    invitedById: {
+      type: Schema.Types.ObjectId,
+      ref: 'Utilisateur',
+      required: true,
+    },
+    statut: {
+      type: String,
+      enum: ['pending', 'accepted', 'declined'],
+      default: 'pending',
+    },
+    invitedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    respondedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
+
+eventInvitationSchema.index({ evenementId: 1, enseignantId: 1 }, { unique: true });
+eventInvitationSchema.index({ enseignantId: 1, statut: 1, invitedAt: -1 });
+eventInvitationSchema.index({ clubId: 1, statut: 1, invitedAt: -1 });
+
 const Competence = mongoose.model('Competence', competenceSchema);
 const Utilisateur = mongoose.model('Utilisateur', utilisateurSchema);
 const PendingRegistration = mongoose.model('PendingRegistration', pendingRegistrationSchema);
@@ -310,6 +353,7 @@ const ParticipationEvenement = mongoose.model(
   'ParticipationEvenement',
   participationEvenementSchema
 );
+const EventInvitation = mongoose.model('EventInvitation', eventInvitationSchema);
 
 module.exports = {
   Competence,
@@ -322,4 +366,5 @@ module.exports = {
   Tache,
   Evenement,
   ParticipationEvenement,
+  EventInvitation,
 };

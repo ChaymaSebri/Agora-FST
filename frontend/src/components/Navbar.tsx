@@ -126,6 +126,14 @@ export const Navbar = () => {
                       Mon profil
                     </Link>
                   </DropdownMenuItem>
+                  {user?.role === "enseignant" && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile#invitations" className="cursor-pointer">
+                        <Inbox className="w-4 h-4 mr-2" />
+                        Invitations
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {user?.role === "club" && (
                     <>
                       <DropdownMenuSeparator />
@@ -210,6 +218,16 @@ export const Navbar = () => {
                       <User className="w-5 h-5" />
                       Mon profil
                     </Link>
+                    {user?.role === "enseignant" && (
+                      <Link
+                        to="/profile#invitations"
+                        onClick={() => setOpen(false)}
+                        className="text-lg font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+                      >
+                        <Inbox className="w-5 h-5" />
+                        Invitations
+                      </Link>
+                    )}
                     {isAdmin && (
                       <Link
                         to="/admin"

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/services/api";
-import { fetchCompetences, fetchMyClubMembershipRequests } from "@/services/api";
+import { fetchCompetences, fetchMyClubMembershipRequests, fetchMyEventInvitations, respondToEventInvitation } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,9 +37,20 @@ type ProfileResponse = {
   club_member_count?: number;
 };
 
+type EventInvitation = {
+  id: string;
+  statut: string;
+  invitedAt: string | null;
+  respondedAt: string | null;
+  event: { id: string; title: string; date: string | null; type: string } | null;
+  club: { id: string; nom: string } | null;
+};
+
 const Profile = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const showInvitationsOnly = location.hash === "#invitations";
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<ProfileResponse["role"] | "">("");
   const [fullName, setFullName] = useState("");
@@ -55,6 +66,8 @@ const Profile = () => {
   const [clubMemberCount, setClubMemberCount] = useState(0);
   const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
   const [userCompetenceIds, setUserCompetenceIds] = useState<string[]>([]);
+  const [eventInvitations, setEventInvitations] = useState<EventInvitation[]>([]);
+  const [respondingInvitationId, setRespondingInvitationId] = useState<string | null>(null);
   const [clubMembershipRequests, setClubMembershipRequests] = useState<
     Array<{ id: string; status: string; club: { id: string; nom: string } | null }>
   >([]);
@@ -126,8 +139,24 @@ const Profile = () => {
         setClubMembershipRequests([]);
       }
     };
+
+    const loadEventInvitations = async () => {
+      if (user?.role !== "enseignant") {
+        setEventInvitations([]);
+        return;
+      }
+
+      try {
+        const items = await fetchMyEventInvitations();
+        setEventInvitations(items as EventInvitation[]);
+      } catch {
+        setEventInvitations([]);
+      }
+    };
+
     loadCompetences();
     loadClubMembershipRequests();
+    loadEventInvitations();
   }, [user]);
 
   if (loading) {
@@ -140,6 +169,108 @@ const Profile = () => {
 
   const displayName = role === "club" ? clubName : fullName;
   const initial = (displayName || email).charAt(0).toUpperCase();
+  const invitationsSection =
+    role === "enseignant" ? (
+      <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+        <div className="text-sm font-medium text-foreground">Mes invitations d'événements</div>
+        {eventInvitations.length === 0 ? (
+          <div className="text-sm text-muted-foreground">Aucune invitation pour le moment.</div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {eventInvitations.map((invitation) => (
+              <div key={invitation.id} className="rounded-md border border-border bg-background px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">
+                      {invitation.event?.title || "Événement"}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {invitation.club?.nom || "Club"}
+                      {invitation.event?.date ? ` • ${String(invitation.event.date).slice(0, 10)}` : ""}
+                    </div>
+                  </div>
+                  <Badge variant={invitation.statut === "pending" ? "outline" : "secondary"} className="shrink-0">
+                    {invitation.statut === "pending" ? "En attente" : invitation.statut === "accepted" ? "Acceptée" : "Refusée"}
+                  </Badge>
+                </div>
+
+                {invitation.statut === "pending" && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      disabled={respondingInvitationId === invitation.id}
+                      onClick={async () => {
+                        try {
+                          setRespondingInvitationId(invitation.id);
+                          const updated = await respondToEventInvitation(invitation.id, "accept");
+                          setEventInvitations((current) =>
+                            current.map((item) => (item.id === invitation.id ? updated : item)),
+                          );
+                        } catch (error) {
+                          const message =
+                            (error as { message?: string })?.message || "Impossible d'accepter l'invitation";
+                          toast({ title: "Erreur", description: message, variant: "destructive" });
+                        } finally {
+                          setRespondingInvitationId(null);
+                        }
+                      }}
+                    >
+                      Accepter
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={respondingInvitationId === invitation.id}
+                      onClick={async () => {
+                        try {
+                          setRespondingInvitationId(invitation.id);
+                          const updated = await respondToEventInvitation(invitation.id, "decline");
+                          setEventInvitations((current) =>
+                            current.map((item) => (item.id === invitation.id ? updated : item)),
+                          );
+                        } catch (error) {
+                          const message =
+                            (error as { message?: string })?.message || "Impossible de refuser l'invitation";
+                          toast({ title: "Erreur", description: message, variant: "destructive" });
+                        } finally {
+                          setRespondingInvitationId(null);
+                        }
+                      }}
+                    >
+                      Refuser
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null;
+
+  if (showInvitationsOnly) {
+    return (
+      <div className="container mx-auto px-4 pt-24 pb-12 max-w-2xl">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="mb-4">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
+        </Button>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Mes invitations</CardTitle>
+            <CardDescription>Les invitations reçues de tous les clubs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {invitationsSection ?? (
+              <div className="text-sm text-muted-foreground">Cette section est réservée aux enseignants.</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 pt-24 pb-12 max-w-2xl">
