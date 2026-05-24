@@ -43,6 +43,7 @@ export function ClubProjectParticipantsManagement() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [clubStudents, setClubStudents] = useState<ClubStudent[]>([]);
+  const [resolvedClubId, setResolvedClubId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [studentsLoading, setStudentsLoading] = useState(false);
@@ -57,6 +58,27 @@ export function ClubProjectParticipantsManagement() {
     loadProjects();
   }, []);
 
+  const resolveClubId = async (project?: Project | null) => {
+    if (project?.clubId) {
+      return project.clubId;
+    }
+
+    if (resolvedClubId) {
+      return resolvedClubId;
+    }
+
+    try {
+      const profile = await clubDashboardApi.getClubProfile();
+      const fallbackClubId = profile?.id || profile?._id || null;
+      if (fallbackClubId) {
+        setResolvedClubId(fallbackClubId);
+      }
+      return fallbackClubId;
+    } catch {
+      return null;
+    }
+  };
+
   const loadProjects = async () => {
     try {
       const data = await clubDashboardApi.listClubProjects();
@@ -64,7 +86,8 @@ export function ClubProjectParticipantsManagement() {
       if (data.length > 0) {
         setSelectedProject(data[0]);
         await loadParticipants(data[0].id);
-        await loadClubStudents(data[0].clubId);
+        const clubId = await resolveClubId(data[0]);
+        await loadClubStudents(clubId);
       }
     } catch (error) {
       toast({
@@ -93,7 +116,12 @@ export function ClubProjectParticipantsManagement() {
     }
   };
 
-  const loadClubStudents = async (clubId: string) => {
+  const loadClubStudents = async (clubId?: string | null) => {
+    if (!clubId) {
+      setClubStudents([]);
+      return;
+    }
+
     try {
       setStudentsLoading(true);
       const data = await clubDashboardApi.getClubStudents(clubId);
@@ -115,7 +143,8 @@ export function ClubProjectParticipantsManagement() {
     setStudentId('');
     setStudentSearch('');
     await loadParticipants(project.id);
-    await loadClubStudents(project.clubId);
+    const clubId = await resolveClubId(project);
+    await loadClubStudents(clubId);
   };
 
   const selectableStudents = useMemo(() => {

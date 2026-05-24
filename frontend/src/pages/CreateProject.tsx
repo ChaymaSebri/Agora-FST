@@ -117,7 +117,9 @@ const CreateProject = () => {
 
       toast({
         title: "Projet créé",
-        description: "Le projet a été créé avec succès",
+        description: enseignantId && enseignantId !== "none"
+          ? "Le projet a été créé et une demande d'encadrement a été envoyée"
+          : "Le projet a été créé avec succès",
       });
 
       navigate("/projects");
@@ -203,12 +205,12 @@ const CreateProject = () => {
             </div>
           </div>
 
-          {/* Encadrant */}
+          {/* Encadrant à inviter */}
           <div>
-            <Label>Encadrant</Label>
+            <Label>Encadrant à inviter</Label>
             <Select value={enseignantId} onValueChange={setEnseignantId}>
               <SelectTrigger>
-                <SelectValue placeholder={loadingEnseignants ? "Chargement..." : "Choisir"} />
+                <SelectValue placeholder={loadingEnseignants ? "Chargement..." : "Choisir un enseignant"} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Aucun</SelectItem>

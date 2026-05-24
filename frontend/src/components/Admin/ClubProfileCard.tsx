@@ -108,7 +108,6 @@ export function ClubProfileCard() {
           </div>
           <Dialog open={isEditing} onOpenChange={setIsEditing}>
             <DialogTrigger asChild>
-              <Button variant="outline">Modifier</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>

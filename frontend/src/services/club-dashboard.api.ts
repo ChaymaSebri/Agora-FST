@@ -277,6 +277,10 @@ export const inviteTeacherToProject = async (projectId: string, teacherId: strin
 };
 
 export const getClubStudents = async (clubId: string) => {
+  if (!clubId) {
+    return [];
+  }
+
   try {
     const response = await api.get(`/clubs/${clubId}/students`);
     return response.data.items;

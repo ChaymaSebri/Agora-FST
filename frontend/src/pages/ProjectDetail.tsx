@@ -8,6 +8,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import api from "@/services/api";
 import {
+  createProjectTask,
+  deleteProjectTask,
+  getProjectTasks,
+  updateProjectTask,
+  updateProjectTaskStatus,
+  type ProjectProgressStats,
+  type ProjectTask,
+  type ProjectTaskUser,
+  type TaskPriority,
+  type TaskStatus,
+} from "@/services/project-tasks.api";
+import {
   ArrowLeft, Calendar, Users, GraduationCap, Building2,
   Clock, CheckCircle2, CircleDashed, CirclePlay, CircleX,
   Target, Loader2, BookOpen, Plus, Pencil, Trash2, X, Check,
@@ -20,15 +32,6 @@ interface Etudiant {
   nom: string;
   prenom: string;
   email: string;
-}
-
-interface Tache {
-  id: string;
-  titre: string;
-  description?: string;
-  deadline: string;
-  statut: "a_faire" | "en_cours" | "terminee";
-  etudiantIds: string[];
 }
 
 interface Project {
@@ -45,16 +48,29 @@ interface Project {
   clubId?: string;
   clubNom?: string;
   competenceIds?: string[];
-  taches?: Tache[];
 }
 
-interface TacheForm {
-  titre: string;
+interface TaskForm {
+  title: string;
   description: string;
-  deadline: string;
-  statut: "a_faire" | "en_cours" | "terminee";
-  etudiantIds: string[];
+  assignedTo: string;
+  role: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  dueDate: string;
 }
+
+// ─── Bundle (même structure que ClubProjectTasksManagement) ──────────────────
+
+const emptyStats: ProjectProgressStats = {
+  totalTasks: 0,
+  completedTasks: 0,
+  inProgressTasks: 0,
+  blockedTasks: 0,
+  todoTasks: 0,
+  remainingTasks: 0,
+  progressPercentage: 0,
+};
 
 // ─── Configs ─────────────────────────────────────────────────────────────────
 
@@ -65,10 +81,17 @@ const statutConfig = {
   annule:     { label: "Annulé",     icon: CircleX,      bar: "bg-red-400",   badge: "bg-red-50 text-red-700 border-red-200" },
 };
 
-const tacheStatutOptions = [
-  { value: "a_faire",  label: "À faire",  dot: "bg-gray-400",    badge: "bg-gray-100 text-gray-600" },
-  { value: "en_cours", label: "En cours", dot: "bg-blue-500",    badge: "bg-blue-100 text-blue-700" },
-  { value: "terminee", label: "Terminée", dot: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700" },
+const statusOptions: { value: TaskStatus; label: string; dot: string; badge: string }[] = [
+  { value: "todo",        label: "À faire",  dot: "bg-gray-400",    badge: "bg-gray-100 text-gray-600" },
+  { value: "in_progress", label: "En cours", dot: "bg-blue-500",    badge: "bg-blue-100 text-blue-700" },
+  { value: "completed",   label: "Terminée", dot: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700" },
+  { value: "blocked",     label: "Bloquée",  dot: "bg-red-500",     badge: "bg-red-100 text-red-700" },
+];
+
+const priorityOptions: { value: TaskPriority; label: string }[] = [
+  { value: "low",    label: "Basse" },
+  { value: "medium", label: "Moyenne" },
+  { value: "high",   label: "Haute" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -78,9 +101,10 @@ function formatDate(d?: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 }
 
-function toInputDate(d?: string) {
+function toInputDate(d?: string | null) {
   if (!d) return "";
-  return new Date(d).toISOString().split("T")[0];
+  const date = new Date(d);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().split("T")[0];
 }
 
 function daysLeft(deadline?: string) {
@@ -92,6 +116,10 @@ function getInitials(nom?: string, prenom?: string) {
   return `${(prenom?.[0] || "").toUpperCase()}${(nom?.[0] || "").toUpperCase()}`;
 }
 
+function userName(user?: ProjectTaskUser | null) {
+  return [user?.prenom, user?.nom].filter(Boolean).join(" ") || user?.email || "Participant";
+}
+
 const avatarColors = [
   "from-indigo-400 to-purple-500",
   "from-blue-400 to-cyan-500",
@@ -100,48 +128,46 @@ const avatarColors = [
   "from-pink-400 to-rose-500",
 ];
 
-const emptyForm = (): TacheForm => ({
-  titre: "", description: "", deadline: "",
-  statut: "a_faire", etudiantIds: [],
+const defaultForm = (firstParticipantId = ""): TaskForm => ({
+  title: "",
+  description: "",
+  assignedTo: firstParticipantId,
+  role: "",
+  priority: "medium",
+  status: "todo",
+  dueDate: "",
 });
 
-// ─── Tache Modal ─────────────────────────────────────────────────────────────
+// ─── Task Modal ───────────────────────────────────────────────────────────────
 
-const TacheModal = ({
-  tache,
-  membres,
+const TaskModal = ({
+  task,
+  participants,
   onClose,
   onSave,
 }: {
-  tache?: Tache;
-  membres: Etudiant[];
+  task?: ProjectTask;
+  participants: ProjectTaskUser[];
   onClose: () => void;
-  onSave: (form: TacheForm) => Promise<void>;
+  onSave: (form: TaskForm) => Promise<void>;
 }) => {
-  const [form, setForm] = useState<TacheForm>(
-    tache
+  const [form, setForm] = useState<TaskForm>(
+    task
       ? {
-          titre: tache.titre,
-          description: tache.description || "",
-          deadline: toInputDate(tache.deadline),
-          statut: tache.statut,
-          etudiantIds: tache.etudiantIds || [],
+          title: task.title,
+          description: task.description || "",
+          assignedTo: task.assignedTo?.id || participants[0]?.id || "",
+          role: task.role || "",
+          priority: task.priority,
+          status: task.status,
+          dueDate: toInputDate(task.dueDate),
         }
-      : emptyForm()
+      : defaultForm(participants[0]?.id || "")
   );
   const [saving, setSaving] = useState(false);
 
-  const toggleMembre = (id: string) => {
-    setForm((f) => ({
-      ...f,
-      etudiantIds: f.etudiantIds.includes(id)
-        ? f.etudiantIds.filter((e) => e !== id)
-        : [...f.etudiantIds, id],
-    }));
-  };
-
   const handleSave = async () => {
-    if (!form.titre.trim() || !form.deadline) return;
+    if (!form.title.trim() || !form.assignedTo) return;
     setSaving(true);
     try {
       await onSave(form);
@@ -156,7 +182,7 @@ const TacheModal = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
           <h2 className="font-semibold text-gray-900 dark:text-white">
-            {tache ? "Modifier la tâche" : "Nouvelle tâche"}
+            {task ? "Modifier la tâche" : "Nouvelle tâche"}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X className="w-5 h-5" />
@@ -170,8 +196,8 @@ const TacheModal = ({
               Titre <span className="text-red-500">*</span>
             </Label>
             <Input
-              value={form.titre}
-              onChange={(e) => setForm((f) => ({ ...f, titre: e.target.value }))}
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="Ex: Rédiger le rapport..."
               className="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
             />
@@ -189,71 +215,75 @@ const TacheModal = ({
             />
           </div>
 
-          {/* Deadline + Statut */}
+          {/* Participant + Rôle */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                Deadline <span className="text-red-500">*</span>
+                Participant <span className="text-red-500">*</span>
               </Label>
+              {participants.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">Aucun membre</p>
+              ) : (
+                <select
+                  value={form.assignedTo}
+                  onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
+                  className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">-- Choisir --</option>
+                  {participants.map((p) => (
+                    <option key={p.id} value={p.id}>{userName(p)}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-200">Rôle</Label>
               <Input
-                type="date"
-                value={form.deadline}
-                onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
+                value={form.role}
+                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                placeholder="Frontend, rapport..."
                 className="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
               />
+            </div>
+          </div>
+
+          {/* Priorité + Statut */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-200">Priorité</Label>
+              <select
+                value={form.priority}
+                onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as TaskPriority }))}
+                className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+              >
+                {priorityOptions.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-gray-700 dark:text-gray-200">Statut</Label>
               <select
-                value={form.statut}
-                onChange={(e) => setForm((f) => ({ ...f, statut: e.target.value as TacheForm["statut"] }))}
+                value={form.status}
+                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as TaskStatus }))}
                 className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
               >
-                {tacheStatutOptions.map((s) => (
+                {statusOptions.map((s) => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* Assigner membres */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-              Assigner à des membres
-              <span className="ml-1 text-xs font-normal text-gray-400">({form.etudiantIds.length} sélectionné{form.etudiantIds.length > 1 ? "s" : ""})</span>
-            </Label>
-            {membres.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">Aucun membre dans ce projet</p>
-            ) : (
-              <div className="space-y-1.5 max-h-40 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 p-2">
-                {membres.map((m, i) => {
-                  const selected = form.etudiantIds.includes(m.id);
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => toggleMembre(m.id)}
-                      className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-all text-left ${
-                        selected
-                          ? "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800"
-                          : "hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent"
-                      }`}
-                    >
-                      <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${avatarColors[i % avatarColors.length]} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
-                        {getInitials(m.nom, m.prenom)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-                          {m.prenom} {m.nom}
-                        </p>
-                        <p className="text-xs text-gray-400 truncate">{m.email}</p>
-                      </div>
-                      {selected && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          {/* Deadline */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-gray-700 dark:text-gray-200">Deadline</Label>
+            <Input
+              type="date"
+              value={form.dueDate}
+              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+              className="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+            />
           </div>
         </div>
 
@@ -264,10 +294,10 @@ const TacheModal = ({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={saving || !form.titre.trim() || !form.deadline}
+            disabled={saving || !form.title.trim() || !form.assignedTo}
             className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : tache ? "Enregistrer" : "Créer la tâche"}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : task ? "Enregistrer" : "Créer la tâche"}
           </Button>
         </div>
       </div>
@@ -312,16 +342,22 @@ const ProjectDetail = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Bundle tâches (même structure que ClubProjectTasksManagement)
+  const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [participants, setParticipants] = useState<ProjectTaskUser[]>([]);
+  const [stats, setStats] = useState<ProjectProgressStats>(emptyStats);
+  const [bundleLoading, setBundleLoading] = useState(false);
+
   // Enseignants modal
   const [enseignants, setEnseignants] = useState<any[]>([]);
   const [loadingEnseignants, setLoadingEnseignants] = useState(false);
   const [selectedEnseignant, setSelectedEnseignant] = useState("");
   const [openEncadrant, setOpenEncadrant] = useState(false);
 
-  // Tache modals
-  const [tacheModal, setTacheModal] = useState<{ open: boolean; tache?: Tache }>({ open: false });
-  const [deleteTacheModal, setDeleteTacheModal] = useState<{ open: boolean; tache?: Tache }>({ open: false });
-  const [deletingTache, setDeletingTache] = useState(false);
+  // Task modals
+  const [taskModal, setTaskModal] = useState<{ open: boolean; task?: ProjectTask }>({ open: false });
+  const [deleteTaskModal, setDeleteTaskModal] = useState<{ open: boolean; task?: ProjectTask }>({ open: false });
+  const [deletingTask, setDeletingTask] = useState(false);
 
   // ── Fetch project ──
   const fetchProject = async () => {
@@ -337,7 +373,31 @@ const ProjectDetail = () => {
     }
   };
 
-  useEffect(() => { fetchProject(); }, [id]);
+  // ── Fetch bundle tâches (même logique que ClubProjectTasksManagement) ──
+  const loadBundle = async (projectId: string) => {
+    setBundleLoading(true);
+    try {
+      const data = await getProjectTasks(projectId);
+      setTasks(data.tasks || []);
+      setParticipants(data.participants || []);
+      setStats(data.stats || emptyStats);
+    } catch (error) {
+      console.error("Erreur lors du chargement des tâches du projet", error);
+      setTasks([]);
+      setParticipants([]);
+      setStats(emptyStats);
+    } finally {
+      setBundleLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProject();
+  }, [id]);
+
+  useEffect(() => {
+    if (id) loadBundle(id);
+  }, [id]);
 
   // ── Fetch enseignants ──
   useEffect(() => {
@@ -370,69 +430,74 @@ const ProjectDetail = () => {
     }
   };
 
-  // ── Create tache ──
-  const handleCreateTache = async (form: TacheForm) => {
+  // ── Create task ──
+  const handleCreateTask = async (form: TaskForm) => {
     if (!project) return;
     try {
-      await api.post(`/projets/${project.id}/taches`, {
-        titre: form.titre.trim(),
+      await createProjectTask({
+        projectId: project.id,
+        title: form.title.trim(),
         description: form.description.trim(),
-        deadline: new Date(form.deadline).toISOString(),
-        statut: form.statut,
-        etudiantIds: form.etudiantIds,
+        assignedTo: form.assignedTo,
+        role: form.role.trim(),
+        priority: form.priority,
+        status: form.status,
+        dueDate: form.dueDate || null,
       });
       toast({ title: "Tâche créée" });
-      setTacheModal({ open: false });
-      await fetchProject();
+      setTaskModal({ open: false });
+      await loadBundle(project.id);
     } catch {
       toast({ title: "Erreur", description: "Impossible de créer la tâche", variant: "destructive" });
       throw new Error("fail");
     }
   };
 
-  // ── Update tache ──
-  const handleUpdateTache = async (form: TacheForm) => {
-    if (!project || !tacheModal.tache) return;
+  // ── Update task ──
+  const handleUpdateTask = async (form: TaskForm) => {
+    if (!project || !taskModal.task) return;
     try {
-      await api.put(`/projets/${project.id}/taches/${tacheModal.tache.id}`, {
-        titre: form.titre.trim(),
+      await updateProjectTask(taskModal.task.id, {
+        projectId: project.id,
+        title: form.title.trim(),
         description: form.description.trim(),
-        deadline: new Date(form.deadline).toISOString(),
-        statut: form.statut,
-        etudiantIds: form.etudiantIds,
+        assignedTo: form.assignedTo,
+        role: form.role.trim(),
+        priority: form.priority,
+        status: form.status,
+        dueDate: form.dueDate || null,
       });
       toast({ title: "Tâche mise à jour" });
-      setTacheModal({ open: false });
-      await fetchProject();
+      setTaskModal({ open: false });
+      await loadBundle(project.id);
     } catch {
       toast({ title: "Erreur", description: "Impossible de modifier la tâche", variant: "destructive" });
       throw new Error("fail");
     }
   };
 
-  // ── Delete tache ──
-  const handleDeleteTache = async () => {
-    if (!project || !deleteTacheModal.tache) return;
-    setDeletingTache(true);
+  // ── Delete task ──
+  const handleDeleteTask = async () => {
+    if (!project || !deleteTaskModal.task) return;
+    setDeletingTask(true);
     try {
-      await api.delete(`/projets/${project.id}/taches/${deleteTacheModal.tache.id}`);
+      await deleteProjectTask(deleteTaskModal.task.id);
       toast({ title: "Tâche supprimée" });
-      setDeleteTacheModal({ open: false });
-      await fetchProject();
+      setDeleteTaskModal({ open: false });
+      await loadBundle(project.id);
     } catch {
       toast({ title: "Erreur", description: "Impossible de supprimer la tâche", variant: "destructive" });
     } finally {
-      setDeletingTache(false);
+      setDeletingTask(false);
     }
   };
 
-  // ── Quick status toggle ──
-  const handleToggleStatut = async (tache: Tache) => {
-    if (!project) return;
-    const next = tache.statut === "terminee" ? "en_cours" : tache.statut === "en_cours" ? "terminee" : "en_cours";
+  // ── Quick status toggle (completed ↔ in_progress) ──
+  const handleToggleStatus = async (task: ProjectTask) => {
+    const next: TaskStatus = task.status === "completed" ? "in_progress" : "completed";
     try {
-      await api.put(`/projets/${project.id}/taches/${tache.id}`, { statut: next });
-      await fetchProject();
+      await updateProjectTaskStatus(task.id, next);
+      if (project) await loadBundle(project.id);
     } catch {
       toast({ title: "Erreur", description: "Impossible de changer le statut", variant: "destructive" });
     }
@@ -458,8 +523,9 @@ const ProjectDetail = () => {
   const isOverdue = days !== null && days < 0 && project.statut !== "termine";
   const canManage = user?.role === "club" || user?.role === "admin";
   const membres = project.etudiants || [];
-  const taches = project.taches || [];
-  const tachesTerminees = taches.filter((t) => t.statut === "terminee").length;
+
+  // Progression depuis les stats de tâches si disponibles, sinon valeur projet
+  const progression = stats.totalTasks > 0 ? stats.progressPercentage : project.progression;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -493,20 +559,20 @@ const ProjectDetail = () => {
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${cfg.badge}`}>
-    <StatutIcon className="w-4 h-4" />{cfg.label}
-  </span>
-  {canManage && (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={() => navigate(`/projects/${project.id}/edit`)}
-      className="text-xs"
-    >
-      Modifier
-    </Button>
-  )}
-</div>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${cfg.badge}`}>
+                  <StatutIcon className="w-4 h-4" />{cfg.label}
+                </span>
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/projects/${project.id}/edit`)}
+                    className="text-xs"
+                  >
+                    Modifier
+                  </Button>
+                )}
+              </div>
             </div>
 
             {project.objectif && (
@@ -519,17 +585,20 @@ const ProjectDetail = () => {
               </div>
             )}
 
+            {/* Progression depuis les stats tâches */}
             <div className="mt-6">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Progression globale</span>
-                <span className="text-sm font-bold text-gray-900 dark:text-white">{project.progression}%</span>
+                <span className="text-sm font-bold text-gray-900 dark:text-white">
+                  {bundleLoading ? <Loader2 className="w-4 h-4 animate-spin inline" /> : `${progression}%`}
+                </span>
               </div>
               <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden">
-                <div className={`h-2.5 rounded-full transition-all duration-700 ${cfg.bar}`} style={{ width: `${project.progression}%` }} />
+                <div className={`h-2.5 rounded-full transition-all duration-700 ${cfg.bar}`} style={{ width: `${progression}%` }} />
               </div>
-              {taches.length > 0 && (
+              {stats.totalTasks > 0 && (
                 <p className="text-xs text-gray-400 mt-1.5">
-                  {tachesTerminees} / {taches.length} tâche{taches.length > 1 ? "s" : ""} terminée{tachesTerminees > 1 ? "s" : ""}
+                  {stats.completedTasks} / {stats.totalTasks} tâche{stats.totalTasks > 1 ? "s" : ""} terminée{stats.completedTasks > 1 ? "s" : ""}
                 </p>
               )}
             </div>
@@ -544,13 +613,14 @@ const ProjectDetail = () => {
               <div className="px-6 py-4 border-b border-gray-50 dark:border-gray-800 flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900 dark:text-white">
                   Tâches
-                  {taches.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({taches.length})</span>}
+                  {tasks.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({tasks.length})</span>}
                 </h2>
                 {canManage && (
                   <Button
                     size="sm"
-                    onClick={() => setTacheModal({ open: true, tache: undefined })}
+                    onClick={() => setTaskModal({ open: true, task: undefined })}
                     className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                    disabled={participants.length === 0}
                   >
                     <Plus className="w-3 h-3" /> Ajouter
                   </Button>
@@ -558,63 +628,71 @@ const ProjectDetail = () => {
               </div>
 
               <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                {taches.length === 0 ? (
+                {bundleLoading ? (
+                  <div className="px-6 py-12 flex justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                  </div>
+                ) : tasks.length === 0 ? (
                   <div className="px-6 py-12 text-center">
                     <BookOpen className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                     <p className="text-sm text-gray-400">Aucune tâche pour ce projet</p>
-                    {canManage && (
+                    {canManage && participants.length > 0 && (
                       <Button
                         size="sm"
                         variant="outline"
                         className="mt-3 text-xs"
-                        onClick={() => setTacheModal({ open: true })}
+                        onClick={() => setTaskModal({ open: true })}
                       >
                         Créer la première tâche
                       </Button>
                     )}
+                    {canManage && participants.length === 0 && (
+                      <p className="text-xs text-gray-300 mt-2">Ajoutez des membres au projet pour créer des tâches</p>
+                    )}
                   </div>
                 ) : (
-                  taches.map((tache) => {
-                    const tOpt = tacheStatutOptions.find((s) => s.value === tache.statut) || tacheStatutOptions[0];
-                    const tDays = daysLeft(tache.deadline);
-                    const tOverdue = tDays !== null && tDays < 0 && tache.statut !== "terminee";
-                    const assignedMembers = membres.filter((m) => tache.etudiantIds?.includes(m.id));
+                  tasks.map((task) => {
+                    const sOpt = statusOptions.find((s) => s.value === task.status) || statusOptions[0];
+                    const tDays = daysLeft(task.dueDate ?? undefined);
+                    const tOverdue = tDays !== null && tDays < 0 && task.status !== "completed";
 
                     return (
-                      <div key={tache.id} className="px-6 py-4 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors group">
+                      <div key={task.id} className="px-6 py-4 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors group">
                         {/* Status dot / toggle */}
                         <button
-                          onClick={() => handleToggleStatut(tache)}
-                          title="Changer le statut"
+                          onClick={() => handleToggleStatus(task)}
+                          title="Marquer comme terminée / en cours"
                           className={`mt-1 shrink-0 w-4 h-4 rounded-full border-2 transition-all ${
-                            tache.statut === "terminee"
+                            task.status === "completed"
                               ? "bg-emerald-500 border-emerald-500"
-                              : tache.statut === "en_cours"
+                              : task.status === "in_progress"
                               ? "bg-blue-500 border-blue-500"
+                              : task.status === "blocked"
+                              ? "bg-red-500 border-red-500"
                               : "border-gray-300 hover:border-blue-400"
                           }`}
                         />
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <p className={`text-sm font-medium ${tache.statut === "terminee" ? "line-through text-gray-400" : "text-gray-900 dark:text-white"}`}>
-                              {tache.titre}
+                            <p className={`text-sm font-medium ${task.status === "completed" ? "line-through text-gray-400" : "text-gray-900 dark:text-white"}`}>
+                              {task.title}
                             </p>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tOpt.badge}`}>
-                                {tOpt.label}
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sOpt.badge}`}>
+                                {sOpt.label}
                               </span>
                               {canManage && (
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
-                                    onClick={() => setTacheModal({ open: true, tache })}
+                                    onClick={() => setTaskModal({ open: true, task })}
                                     className="p-1 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
                                     title="Modifier"
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
                                   </button>
                                   <button
-                                    onClick={() => setDeleteTacheModal({ open: true, tache })}
+                                    onClick={() => setDeleteTaskModal({ open: true, task })}
                                     className="p-1 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
                                     title="Supprimer"
                                   >
@@ -625,35 +703,22 @@ const ProjectDetail = () => {
                             </div>
                           </div>
 
-                          {tache.description && (
-                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{tache.description}</p>
+                          {task.description && (
+                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{task.description}</p>
                           )}
 
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                            <span className={`flex items-center gap-1 text-xs ${tOverdue ? "text-red-500" : "text-gray-400"}`}>
-                              <Clock className="w-3 h-3" />
-                              {tOverdue ? `En retard de ${Math.abs(tDays!)}j` : formatDate(tache.deadline)}
-                            </span>
-                            {assignedMembers.length > 0 && (
-                              <div className="flex items-center gap-1">
-                                <div className="flex -space-x-1.5">
-                                  {assignedMembers.slice(0, 3).map((m, i) => (
-                                    <div
-                                      key={m.id}
-                                      title={`${m.prenom} ${m.nom}`}
-                                      className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarColors[i % avatarColors.length]} flex items-center justify-center text-white text-[8px] font-bold border border-white dark:border-gray-900`}
-                                    >
-                                      {getInitials(m.nom, m.prenom)}
-                                    </div>
-                                  ))}
-                                  {assignedMembers.length > 3 && (
-                                    <div className="w-5 h-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] font-bold text-gray-600 dark:text-gray-300 border border-white dark:border-gray-900">
-                                      +{assignedMembers.length - 3}
-                                    </div>
-                                  )}
-                                </div>
-                                <span className="text-xs text-gray-400">{assignedMembers.map((m) => m.prenom).join(", ")}</span>
-                              </div>
+                            {task.dueDate && (
+                              <span className={`flex items-center gap-1 text-xs ${tOverdue ? "text-red-500" : "text-gray-400"}`}>
+                                <Clock className="w-3 h-3" />
+                                {tOverdue ? `En retard de ${Math.abs(tDays!)}j` : formatDate(task.dueDate)}
+                              </span>
+                            )}
+                            {task.assignedTo && (
+                              <span className="text-xs text-gray-400">
+                                → {userName(task.assignedTo)}
+                                {task.role && <span className="ml-1 text-gray-300">· {task.role}</span>}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -667,6 +732,26 @@ const ProjectDetail = () => {
 
           {/* ── Sidebar ── */}
           <div className="space-y-4">
+
+            {/* Stats tâches */}
+            {stats.totalTasks > 0 && (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Tâches</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Total",      value: stats.totalTasks,      color: "text-gray-700 dark:text-gray-200" },
+                    { label: "Terminées",  value: stats.completedTasks,  color: "text-emerald-600" },
+                    { label: "En cours",   value: stats.inProgressTasks, color: "text-blue-600" },
+                    { label: "Bloquées",   value: stats.blockedTasks,    color: "text-red-500" },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                      <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+                      <div className="text-xs text-gray-400">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Calendrier */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
@@ -698,10 +783,9 @@ const ProjectDetail = () => {
               </div>
             </div>
 
-            {/* Encadrant */}
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Encadrant</h3>
-              {project.enseignant ? (
+            {project.enseignant ? (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Encadrant</h3>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
                     {getInitials(project.enseignant.nom, project.enseignant.prenom)}
@@ -713,18 +797,8 @@ const ProjectDetail = () => {
                     <p className="text-xs text-gray-400 truncate">{project.enseignant.email}</p>
                   </div>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center py-3 gap-2">
-                  <GraduationCap className="w-8 h-8 text-gray-200" />
-                  <p className="text-xs text-gray-400 text-center">Aucun encadrant assigné</p>
-                  {canManage && (
-                    <Button size="sm" variant="outline" className="text-xs h-7 mt-1" onClick={() => setOpenEncadrant(true)}>
-                      Inviter un encadrant
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
+              </div>
+            ) : null}
 
             {/* Membres */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
@@ -756,23 +830,23 @@ const ProjectDetail = () => {
         </div>
       </div>
 
-      {/* ── Modal: Tâche (create / edit) ── */}
-      {tacheModal.open && (
-        <TacheModal
-          tache={tacheModal.tache}
-          membres={membres}
-          onClose={() => setTacheModal({ open: false })}
-          onSave={tacheModal.tache ? handleUpdateTache : handleCreateTache}
+      {/* ── Modal: Task (create / edit) ── */}
+      {taskModal.open && (
+        <TaskModal
+          task={taskModal.task}
+          participants={participants}
+          onClose={() => setTaskModal({ open: false })}
+          onSave={taskModal.task ? handleUpdateTask : handleCreateTask}
         />
       )}
 
-      {/* ── Modal: Delete tâche ── */}
-      {deleteTacheModal.open && deleteTacheModal.tache && (
+      {/* ── Modal: Delete task ── */}
+      {deleteTaskModal.open && deleteTaskModal.task && (
         <ConfirmModal
-          message={`Supprimer la tâche "${deleteTacheModal.tache.titre}" ? Cette action est irréversible.`}
-          onConfirm={handleDeleteTache}
-          onCancel={() => setDeleteTacheModal({ open: false })}
-          loading={deletingTache}
+          message={`Supprimer la tâche "${deleteTaskModal.task.title}" ? Cette action est irréversible.`}
+          onConfirm={handleDeleteTask}
+          onCancel={() => setDeleteTaskModal({ open: false })}
+          loading={deletingTask}
         />
       )}
 

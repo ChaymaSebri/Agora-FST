@@ -24,7 +24,6 @@ import { NotificationDialog } from "@/components/NotificationPanel";
 
 const navItems = [
   { name: "Accueil", path: "/" },
-  { name: "Actualites", path: "/news" },
   { name: "Clubs", path: "/clubs" },
   { name: "Projets", path: "/projects" },
   { name: "Événements", path: "/events" },

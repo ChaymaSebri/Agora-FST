@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ClubProfileCard } from '@/components/Admin/ClubProfileCard';
 import { ClubEventManagement } from '@/components/Admin/ClubEventManagement';
@@ -11,6 +10,7 @@ import { ClubProjectParticipationRequests } from '@/components/Admin/ClubProject
 import { ClubProjectTasksManagement } from '@/components/Admin/ClubProjectTasksManagement';
 import * as clubDashboardApi from '@/services/club-dashboard.api';
 import { useToast } from '@/hooks/use-toast';
+import { CalendarDays, ChartColumn, CircleUserRound, FolderKanban, Sparkles, Users } from 'lucide-react';
 
 interface Stats {
   eventsCount: number;
@@ -43,88 +43,98 @@ export function ClubDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 pt-20">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_35%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_55%,_#ffffff_100%)] pt-20">
       <div className="container mx-auto py-8 px-4">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Dashboard du Club
-          </h1>
-          <p className="text-gray-600">
-            Gérez votre club, vos événements et vos projets
-          </p>
+        <div className="mx-auto mb-8 max-w-6xl rounded-3xl border border-white/70 bg-white/75 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
+                <Sparkles className="h-3.5 w-3.5" />
+                Dashboard Club
+              </div>
+              <h1 className="text-4xl font-bold tracking-tight text-gray-900 md:text-5xl">
+                Pilotez votre club depuis un seul espace
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 md:text-base">
+                Gérez le profil du club, les événements, les projets et les demandes dans une vue claire, structurée et rapide.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm text-gray-600 md:min-w-[280px]">
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-3">
+                <p className="text-xs uppercase tracking-wide text-blue-600">Vue globale</p>
+                <p className="mt-1 font-semibold text-gray-900">Profil, événements, projets</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Actions rapides</p>
+                <p className="mt-1 font-semibold text-gray-900">Tout au même endroit</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">
-                Événements Actifs
-              </CardTitle>
+        <div className="mx-auto mb-8 grid max-w-6xl grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="overflow-hidden border-blue-100/80 bg-white/80 shadow-lg shadow-blue-100/40 backdrop-blur transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Événements Actifs</CardTitle>
+              <CalendarDays className="h-5 w-5 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold text-gray-900">
                 {statsLoading ? '-' : stats?.eventsCount ?? 0}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Total des événements
-              </p>
+              <p className="mt-1 text-xs text-gray-500">Total des événements</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">
-                Projets en Cours
-              </CardTitle>
+          <Card className="overflow-hidden border-emerald-100/80 bg-white/80 shadow-lg shadow-emerald-100/40 backdrop-blur transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="h-1 bg-gradient-to-r from-emerald-500 to-lime-400" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Projets en Cours</CardTitle>
+              <FolderKanban className="h-5 w-5 text-emerald-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold text-gray-900">
                 {statsLoading ? '-' : stats?.projectsCount ?? 0}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Total des projets
-              </p>
+              <p className="mt-1 text-xs text-gray-500">Total des projets</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">
-                Participants
-              </CardTitle>
+          <Card className="overflow-hidden border-violet-100/80 bg-white/80 shadow-lg shadow-violet-100/40 backdrop-blur transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="h-1 bg-gradient-to-r from-violet-500 to-fuchsia-400" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Participants</CardTitle>
+              <Users className="h-5 w-5 text-violet-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold text-gray-900">
                 {statsLoading ? '-' : (stats?.activeParticipations ?? 0) + (stats?.totalProjectParticipants ?? 0)}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Total des participants
-              </p>
+              <p className="mt-1 text-xs text-gray-500">Total des participants</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">
-                Taux de Validation
-              </CardTitle>
+          <Card className="overflow-hidden border-amber-100/80 bg-white/80 shadow-lg shadow-amber-100/40 backdrop-blur transition-transform duration-200 hover:-translate-y-0.5">
+            <div className="h-1 bg-gradient-to-r from-amber-500 to-orange-400" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Taux de Validation</CardTitle>
+              <ChartColumn className="h-5 w-5 text-amber-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold text-gray-900">
                 {statsLoading ? '-' : (stats?.validationRate ?? 0)}%
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Inscriptions validées
-              </p>
+              <p className="mt-1 text-xs text-gray-500">Inscriptions validées</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 gap-1 bg-white shadow-md rounded-lg p-1 md:grid-cols-7">
+          <TabsList className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2 rounded-2xl border border-white/80 bg-white/90 p-2 shadow-lg shadow-slate-200/60 backdrop-blur md:grid-cols-3 lg:grid-cols-7">
             <TabsTrigger value="profile">Profil</TabsTrigger>
             <TabsTrigger value="events">Événements</TabsTrigger>
             <TabsTrigger value="participations">Validations</TabsTrigger>

@@ -3,11 +3,11 @@ import { Navbar } from '@/components/Navbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TeacherEventInvitations } from '@/components/Teacher/TeacherEventInvitations';
+import { TeacherEventEncadrement } from '@/components/Teacher/TeacherEventEncadrement';
 import { TeacherProjectEncadrement } from '@/components/Teacher/TeacherProjectEncadrement';
 import { TeacherPendingEventInvitations } from '@/components/Teacher/TeacherPendingEventInvitations';
 import { TeacherPendingProjectInvitations } from '@/components/Teacher/TeacherPendingProjectInvitations';
-import { GlobalEventsList } from '@/components/Teacher/GlobalEventsList';
-import { GlobalProjectsList } from '@/components/Teacher/GlobalProjectsList';
+
 import * as teacherDashboardApi from '@/services/teacher-dashboard.api';
 import { useToast } from '@/hooks/use-toast';
 import { BookOpen, Calendar, Briefcase, Eye, Bell } from 'lucide-react';
@@ -15,6 +15,7 @@ import { BookOpen, Calendar, Briefcase, Eye, Bell } from 'lucide-react';
 interface DashboardStats {
   pendingEventInvitationsCount: number;
   pendingProjectInvitationsCount: number;
+  eventsEncaderedCount: number;
   projectsEncaderedCount: number;
   eventsCount: number;
   projectsCount: number;
@@ -24,6 +25,7 @@ export function TeacherDashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     pendingEventInvitationsCount: 0,
     pendingProjectInvitationsCount: 0,
+    eventsEncaderedCount: 0,
     projectsEncaderedCount: 0,
     eventsCount: 0,
     projectsCount: 0,
@@ -38,9 +40,10 @@ export function TeacherDashboard() {
 
   const loadStats = async () => {
     try {
-      const [pendingEvents, pendingProjects, projects, allEvents, allProjects] = await Promise.all([
+      const [pendingEvents, pendingProjects, events, projects, allEvents, allProjects] = await Promise.all([
         teacherDashboardApi.getPendingEventInvitations(),
         teacherDashboardApi.getPendingProjectInvitations(),
+        teacherDashboardApi.getTeacherEventEncadrement(),
         teacherDashboardApi.getTeacherProjectEncadrement(),
         teacherDashboardApi.getAllEvents(),
         teacherDashboardApi.getAllProjects(),
@@ -49,6 +52,7 @@ export function TeacherDashboard() {
       setStats({
         pendingEventInvitationsCount: pendingEvents.length,
         pendingProjectInvitationsCount: pendingProjects.length,
+        eventsEncaderedCount: events.length,
         projectsEncaderedCount: projects.length,
         eventsCount: allEvents.length,
         projectsCount: allProjects.length,
@@ -93,7 +97,7 @@ export function TeacherDashboard() {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 mb-8 md:grid-cols-2 xl:grid-cols-4">
           <Card className={totalPendingInvitations > 0 ? 'bg-blue-50 border-blue-200' : ''}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Invitations Événements</CardTitle>
@@ -129,30 +133,20 @@ export function TeacherDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tous les Événements</CardTitle>
+              <CardTitle className="text-sm font-medium">Événements Encadrés</CardTitle>
               <Calendar className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.eventsCount}</div>
-              <p className="text-xs text-gray-600">Disponibles</p>
+              <div className="text-2xl font-bold">{stats.eventsEncaderedCount}</div>
+              <p className="text-xs text-gray-600">Organisés</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tous les Projets</CardTitle>
-              <Briefcase className="h-4 w-4 text-orange-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.projectsCount}</div>
-              <p className="text-xs text-gray-600">Disponibles</p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             <TabsTrigger value="pending-invitations" className="flex items-center gap-2 text-xs sm:text-base">
               <Bell className="h-4 w-4" />
               <span className="hidden sm:inline">Invitations</span>
@@ -165,18 +159,16 @@ export function TeacherDashboard() {
               <Briefcase className="h-4 w-4" />
               <span className="hidden sm:inline">Projets</span>
             </TabsTrigger>
+            <TabsTrigger value="event-encadrement" className="flex items-center gap-2 text-xs sm:text-base">
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">Encadrés</span>
+            </TabsTrigger>
             <TabsTrigger value="projects" className="flex items-center gap-2 text-xs sm:text-base">
               <BookOpen className="h-4 w-4" />
               <span className="hidden sm:inline">Encadrement</span>
             </TabsTrigger>
-            <TabsTrigger value="all-events" className="flex items-center gap-2 text-xs sm:text-base">
-              <Eye className="h-4 w-4" />
-              <span className="hidden sm:inline">Tous Événements</span>
-            </TabsTrigger>
-            <TabsTrigger value="all-projects" className="flex items-center gap-2 text-xs sm:text-base">
-              <Eye className="h-4 w-4" />
-              <span className="hidden sm:inline">Tous Projets</span>
-            </TabsTrigger>
+
+
           </TabsList>
 
           <TabsContent value="pending-invitations" className="space-y-4">
@@ -194,17 +186,15 @@ export function TeacherDashboard() {
             <TeacherPendingProjectInvitations />
           </TabsContent>
 
+          <TabsContent value="event-encadrement" className="space-y-4">
+            <TeacherEventEncadrement />
+          </TabsContent>
+
           <TabsContent value="projects" className="space-y-4">
             <TeacherProjectEncadrement />
           </TabsContent>
 
-          <TabsContent value="all-events" className="space-y-4">
-            <GlobalEventsList />
-          </TabsContent>
 
-          <TabsContent value="all-projects" className="space-y-4">
-            <GlobalProjectsList />
-          </TabsContent>
         </Tabs>
       </div>
     </div>

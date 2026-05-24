@@ -119,9 +119,9 @@ export function TeacherPendingProjectInvitations() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Project Details */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Target size={16} className="text-purple-500" />
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                  <Target size={16} className="mt-0.5 text-purple-500" />
                   <div>
                     <p className="text-gray-600">Deadline</p>
                     <p className="font-medium">
@@ -129,8 +129,8 @@ export function TeacherPendingProjectInvitations() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Users size={16} className="text-purple-500" />
+                <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                  <Users size={16} className="mt-0.5 text-purple-500" />
                   <div>
                     <p className="text-gray-600">Étudiants</p>
                     <p className="font-medium">{invitation.etudiantsCount}</p>

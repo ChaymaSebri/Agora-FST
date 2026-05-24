@@ -103,6 +103,20 @@ export const getTeacherProjectInvitations = async () => {
 };
 
 // ============================================================================
+// TEACHER - Event Encadrement
+// ============================================================================
+
+export const getTeacherEventEncadrement = async () => {
+  try {
+    const response = await api.get('/teacher-dashboard/teacher/events');
+    return response.data.items;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des événements encadrés:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
 // TEACHER - Pending Event Invitations (New System)
 // ============================================================================
 

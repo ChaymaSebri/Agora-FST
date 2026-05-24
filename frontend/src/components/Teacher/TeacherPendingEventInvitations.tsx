@@ -119,9 +119,9 @@ export function TeacherPendingEventInvitations() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Event Details */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Calendar size={16} className="text-blue-500" />
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                  <Calendar size={16} className="mt-0.5 text-blue-500" />
                   <div>
                     <p className="text-gray-600">Date</p>
                     <p className="font-medium">
@@ -129,8 +129,8 @@ export function TeacherPendingEventInvitations() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <MapPin size={16} className="text-blue-500" />
+                <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                  <MapPin size={16} className="mt-0.5 text-blue-500" />
                   <div>
                     <p className="text-gray-600">Lieu</p>
                     <p className="font-medium">{invitation.lieu || 'À déterminer'}</p>

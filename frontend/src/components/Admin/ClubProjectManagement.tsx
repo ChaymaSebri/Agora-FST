@@ -38,7 +38,7 @@ interface Project {
   statut: string;
   progression: number;
   enseignantId: string;
-  enseignant: string;
+  enseignant: string | null;
   etudiantsCount: number;
   etudiants: Array<{
     id: string;
@@ -145,8 +145,9 @@ export function ClubProjectManagement() {
       }
 
       if (editingProject) {
+        const { enseignantId, ...updateData } = formData;
         await clubDashboardApi.updateClubProject(editingProject.id, {
-          ...formData,
+          ...updateData,
           imageUrl: uploadedImageUrl || undefined,
           progression: parseInt(formData.progression),
         });
@@ -161,7 +162,9 @@ export function ClubProjectManagement() {
         });
         toast({
           title: 'Succès',
-          description: 'Projet créé',
+          description: formData.enseignantId
+            ? 'Projet créé et demande d\'encadrement envoyée'
+            : 'Projet créé',
         });
       }
       setIsDialogOpen(false);
@@ -338,16 +341,18 @@ export function ClubProjectManagement() {
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">Enseignant (ID)</label>
-                  <Input
-                    value={formData.enseignantId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, enseignantId: e.target.value })
-                    }
-                    placeholder="ID de l'enseignant"
-                  />
-                </div>
+                {!editingProject ? (
+                  <div>
+                    <label className="text-sm font-medium">Encadrant à inviter (ID)</label>
+                    <Input
+                      value={formData.enseignantId}
+                      onChange={(e) =>
+                        setFormData({ ...formData, enseignantId: e.target.value })
+                      }
+                      placeholder="ID de l'enseignant à inviter"
+                    />
+                  </div>
+                ) : null}
                 <div className="flex gap-2">
                   <Button onClick={handleSave}>Enregistrer</Button>
                   <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -413,15 +418,17 @@ export function ClubProjectManagement() {
                   </div>
 
                   {/* Project Details */}
-                  <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                  <div className={`grid gap-4 mb-3 text-sm ${project.enseignantId ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <div>
                       <p className="text-gray-600">Statut</p>
                       <p className="font-medium">{getStatutLabel(project.statut)}</p>
                     </div>
-                    <div>
-                      <p className="text-gray-600">Encadrant</p>
-                      <p className="font-medium">{project.enseignant}</p>
-                    </div>
+                    {project.enseignantId ? (
+                      <div>
+                        <p className="text-gray-600">Encadrant</p>
+                        <p className="font-medium">{project.enseignant}</p>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mb-3 text-sm">

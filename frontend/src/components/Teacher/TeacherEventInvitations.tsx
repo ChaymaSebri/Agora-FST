@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import * as teacherDashboardApi from '@/services/teacher-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Calendar, MapPin, Tag } from 'lucide-react';
 
 interface Event {
   id: string;
@@ -153,14 +154,24 @@ export function TeacherEventInvitations() {
                 <p className="text-sm text-gray-700 mb-3">{invitation.description}</p>
 
                 <div className="text-sm text-gray-600 space-y-1 mb-4">
-                  <p>
-                    📅{' '}
-                    {format(new Date(invitation.date), 'dd MMMM yyyy HH:mm', {
-                      locale: fr,
-                    })}
-                  </p>
-                  {invitation.lieu && <p>📍 {invitation.lieu}</p>}
-                  <p>🏷️ {invitation.type}</p>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-blue-500" />
+                    <span>
+                      {format(new Date(invitation.date), 'dd MMMM yyyy HH:mm', {
+                        locale: fr,
+                      })}
+                    </span>
+                  </div>
+                  {invitation.lieu && (
+                    <div className="flex items-center gap-2">
+                      <MapPin size={16} className="text-blue-500" />
+                      <span>{invitation.lieu}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Tag size={16} className="text-blue-500" />
+                    <span className="capitalize">{invitation.type}</span>
+                  </div>
                 </div>
 
                 {invitation.statut === 'inscrit' && (

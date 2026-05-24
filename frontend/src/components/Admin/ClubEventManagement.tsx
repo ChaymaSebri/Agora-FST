@@ -3,11 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -94,24 +92,25 @@ export function ClubEventManagement() {
     setEditingEvent(null);
   };
 
-  const handleOpenDialog = (event?: Event) => {
-    if (event) {
-      setEditingEvent(event);
-      setFormData({
-        titre: event.titre,
-        description: event.description || '',
-        imageUrl: event.imageUrl || '',
-        date: event.date,
-        lieu: event.lieu || '',
-        capacite: event.capacite?.toString() || '',
-        type: event.type,
-      });
-      setPhotoPreview(event.imageUrl || null);
-      setPhotoFile(null);
-    } else {
-      resetForm();
-    }
+  const handleOpenEditDialog = (event: Event) => {
+    setEditingEvent(event);
+    setFormData({
+      titre: event.titre,
+      description: event.description || '',
+      imageUrl: event.imageUrl || '',
+      date: event.date,
+      lieu: event.lieu || '',
+      capacite: event.capacite?.toString() || '',
+      type: event.type,
+    });
+    setPhotoPreview(event.imageUrl || null);
+    setPhotoFile(null);
     setIsDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false);
+    resetForm();
   };
 
   const handleSave = async () => {
@@ -140,23 +139,14 @@ export function ClubEventManagement() {
           title: 'Succès',
           description: 'Événement mis à jour',
         });
-      } else {
-        await clubDashboardApi.createClubEvent({
-          ...formData,
-          imageUrl: uploadedImageUrl || undefined,
-          capacite: formData.capacite ? parseInt(formData.capacite) : undefined,
-        });
-        toast({
-          title: 'Succès',
-          description: 'Événement créé',
-        });
       }
-      setIsDialogOpen(false);
+
+      handleCloseDialog();
       await loadEvents();
     } catch (error) {
       toast({
         title: 'Erreur',
-        description: 'Impossible de sauvegarder l\'événement',
+        description: "Impossible de sauvegarder l'événement",
         variant: 'destructive',
       });
     }
@@ -174,7 +164,7 @@ export function ClubEventManagement() {
       } catch (error) {
         toast({
           title: 'Erreur',
-          description: 'Impossible de supprimer l\'événement',
+          description: "Impossible de supprimer l'événement",
           variant: 'destructive',
         });
       }
@@ -188,124 +178,110 @@ export function ClubEventManagement() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle>Gestion des Événements</CardTitle>
-            <CardDescription>Créer et gérer les événements du club</CardDescription>
-          </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()}>
-                + Nouvel Événement
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingEvent ? 'Modifier' : 'Créer'} un événement
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Titre *</label>
-                  <Input
-                    value={formData.titre}
-                    onChange={(e) =>
-                      setFormData({ ...formData, titre: e.target.value })
-                    }
-                    placeholder="Titre de l'événement"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Description</label>
-                  <Textarea
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                    placeholder="Description de l'événement"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Photo (optionnel)</label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setPhotoFile(file);
-                      setPhotoPreview(file ? URL.createObjectURL(file) : formData.imageUrl || null);
-                    }}
-                  />
-                  {photoPreview ? (
-                    <div className="mt-2 overflow-hidden rounded-md border border-border">
-                      <img src={photoPreview} alt="Aperçu événement" className="h-36 w-full object-cover" />
-                    </div>
-                  ) : null}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Date *</label>
-                    <Input
-                      type="datetime-local"
-                      value={formData.date}
-                      onChange={(e) =>
-                        setFormData({ ...formData, date: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Type</label>
-                    <Select value={formData.type} onValueChange={(value) =>
-                      setFormData({ ...formData, type: value })
-                    }>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="conference">Conférence</SelectItem>
-                        <SelectItem value="atelier">Atelier</SelectItem>
-                        <SelectItem value="hackathon">Hackathon</SelectItem>
-                        <SelectItem value="sortie">Sortie</SelectItem>
-                        <SelectItem value="autre">Autre</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Lieu</label>
-                    <Input
-                      value={formData.lieu}
-                      onChange={(e) =>
-                        setFormData({ ...formData, lieu: e.target.value })
-                      }
-                      placeholder="Lieu de l'événement"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Capacité</label>
-                    <Input
-                      type="number"
-                      value={formData.capacite}
-                      onChange={(e) =>
-                        setFormData({ ...formData, capacite: e.target.value })
-                      }
-                      placeholder="Nombre de places"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={handleSave}>Enregistrer</Button>
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Annuler
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+        <CardTitle>Gestion des Événements</CardTitle>
+        <CardDescription>Gérer les événements du club</CardDescription>
       </CardHeader>
+
+      {/* Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog(); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Modifier l'événement</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Titre *</label>
+              <Input
+                value={formData.titre}
+                onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
+                placeholder="Titre de l'événement"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Description de l'événement"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Photo (optionnel)</label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (photoPreview && photoPreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(photoPreview);
+                  }
+                  setPhotoFile(file);
+                  setPhotoPreview(file ? URL.createObjectURL(file) : formData.imageUrl || null);
+                }}
+              />
+              {photoPreview && (
+                <div className="mt-2 overflow-hidden rounded-md border border-border">
+                  <img src={photoPreview} alt="Aperçu événement" className="h-36 w-full object-cover" />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Date *</label>
+                <Input
+                  type="datetime-local"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Type</label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value) => setFormData({ ...formData, type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="conference">Conférence</SelectItem>
+                    <SelectItem value="atelier">Atelier</SelectItem>
+                    <SelectItem value="hackathon">Hackathon</SelectItem>
+                    <SelectItem value="sortie">Sortie</SelectItem>
+                    <SelectItem value="autre">Autre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Lieu</label>
+                <Input
+                  value={formData.lieu}
+                  onChange={(e) => setFormData({ ...formData, lieu: e.target.value })}
+                  placeholder="Lieu de l'événement"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Capacité</label>
+                <Input
+                  type="number"
+                  value={formData.capacite}
+                  onChange={(e) => setFormData({ ...formData, capacite: e.target.value })}
+                  placeholder="Nombre de places"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSave}>Enregistrer</Button>
+              <Button variant="outline" onClick={handleCloseDialog}>
+                Annuler
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <CardContent>
         <div className="space-y-4">
           {events.length === 0 ? (
@@ -314,11 +290,12 @@ export function ClubEventManagement() {
             events.map((event) => (
               <Card key={event.id} className="border hover:shadow-md transition">
                 <CardContent className="pt-4">
-                  {event.imageUrl ? (
+                  {event.imageUrl && (
                     <div className="mb-3 overflow-hidden rounded-md">
                       <img src={event.imageUrl} alt={event.titre} className="h-44 w-full object-cover" />
                     </div>
-                  ) : null}
+                  )}
+
                   {/* Event Header */}
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">
@@ -329,7 +306,7 @@ export function ClubEventManagement() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleOpenDialog(event)}
+                        onClick={() => handleOpenEditDialog(event)}
                       >
                         Modifier
                       </Button>
@@ -347,9 +324,7 @@ export function ClubEventManagement() {
                   <div className="text-sm text-gray-600 space-y-1 mb-4">
                     <p>
                       📅{' '}
-                      {format(new Date(event.date), 'dd MMMM yyyy HH:mm', {
-                        locale: fr,
-                      })}
+                      {format(new Date(event.date), 'dd MMMM yyyy HH:mm', { locale: fr })}
                     </p>
                     {event.lieu && <p>📍 {event.lieu}</p>}
                     <p>
@@ -363,21 +338,27 @@ export function ClubEventManagement() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
+                    onClick={() =>
+                      setExpandedEventId(expandedEventId === event.id ? null : event.id)
+                    }
                     className="w-full justify-between mb-3"
                   >
                     <span className="flex items-center gap-2">
                       <Mail size={16} />
                       Invitations Enseignants
                     </span>
-                    {expandedEventId === event.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    {expandedEventId === event.id ? (
+                      <ChevronUp size={16} />
+                    ) : (
+                      <ChevronDown size={16} />
+                    )}
                   </Button>
 
                   {/* Invitations Section */}
                   {expandedEventId === event.id && (
                     <div className="border-t pt-4 mt-4">
-                      <ClubEventTeacherInvitations 
-                        eventId={event.id} 
+                      <ClubEventTeacherInvitations
+                        eventId={event.id}
                         onInvitationStatusChange={() => loadEvents()}
                       />
                     </div>

@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import * as teacherDashboardApi from '@/services/teacher-dashboard.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Calendar, MapPin, Users, BadgeInfo } from 'lucide-react';
 
 interface Event {
   id: string;
@@ -133,27 +134,36 @@ export function GlobalEventsList() {
 
                 <p className="text-sm text-gray-700 mb-3">{event.description}</p>
 
-                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                  <div>
-                    <p className="text-gray-600">📅 Date</p>
-                    <p className="font-medium">
-                      {format(new Date(event.date), 'dd MMMM yyyy HH:mm', {
-                        locale: fr,
-                      })}
-                    </p>
+                <div className="grid grid-cols-1 gap-3 text-sm mb-4 sm:grid-cols-2">
+                  <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                    <Calendar size={16} className="mt-0.5 text-blue-500" />
+                    <div>
+                      <p className="text-gray-600">Date</p>
+                      <p className="font-medium">
+                        {format(new Date(event.date), 'dd MMMM yyyy HH:mm', {
+                          locale: fr,
+                        })}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-gray-600">👥 Participants</p>
-                    <p className="font-medium">
-                      {event.participantsCount}/{event.capacite || '∞'}
-                    </p>
+                  <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                    <Users size={16} className="mt-0.5 text-blue-500" />
+                    <div>
+                      <p className="text-gray-600">Participants</p>
+                      <p className="font-medium">
+                        {event.participantsCount}/{event.capacite || '∞'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
                 {event.lieu && (
-                  <div className="mb-3">
-                    <p className="text-sm text-gray-600">📍 Lieu</p>
-                    <p className="font-medium">{event.lieu}</p>
+                  <div className="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3">
+                    <MapPin size={16} className="mt-0.5 text-blue-500" />
+                    <div>
+                      <p className="text-sm text-gray-600">Lieu</p>
+                      <p className="font-medium">{event.lieu}</p>
+                    </div>
                   </div>
                 )}
 
@@ -182,17 +192,26 @@ export function GlobalEventsList() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <h4 className="font-semibold text-sm mb-1">Type</h4>
+                            <h4 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
+                              <BadgeInfo size={14} className="text-blue-500" />
+                              Type
+                            </h4>
                             <p className="text-sm">{getTypeLabel(selectedEvent.type)}</p>
                           </div>
                           <div>
-                            <h4 className="font-semibold text-sm mb-1">Participants</h4>
+                            <h4 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
+                              <Users size={14} className="text-blue-500" />
+                              Participants
+                            </h4>
                             <p className="text-sm">
                               {selectedEvent.participantsCount}/{selectedEvent.capacite || '∞'}
                             </p>
                           </div>
                           <div>
-                            <h4 className="font-semibold text-sm mb-1">Date</h4>
+                            <h4 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
+                              <Calendar size={14} className="text-blue-500" />
+                              Date
+                            </h4>
                             <p className="text-sm">
                               {format(new Date(selectedEvent.date), 'dd MMMM yyyy HH:mm', {
                                 locale: fr,
@@ -201,7 +220,10 @@ export function GlobalEventsList() {
                           </div>
                           {selectedEvent.lieu && (
                             <div>
-                              <h4 className="font-semibold text-sm mb-1">Lieu</h4>
+                              <h4 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
+                                <MapPin size={14} className="text-blue-500" />
+                                Lieu
+                              </h4>
                               <p className="text-sm">{selectedEvent.lieu}</p>
                             </div>
                           )}
