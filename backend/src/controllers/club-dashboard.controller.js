@@ -481,25 +481,34 @@ async function listClubProjects(req, res, next) {
       .sort({ deadline: -1 });
 
     const projectsWithStats = projects.map(p => ({
-      id: p._id.toString(),
-      titre: p.titre,
-      description: p.description,
-      objectif: p.objectif,
-      dateDebut: p.dateDebut,
-      deadline: p.deadline,
-      statut: p.statut,
-      progression: p.progression,
-      enseignantId: p.enseignantId._id.toString(),
-      enseignant: `${p.enseignantId.nom} ${p.enseignantId.prenom}`,
-      etudiantsCount: p.etudiantIds ? p.etudiantIds.length : 0,
-      etudiants: p.etudiantIds ? p.etudiantIds.map(e => ({
+  id: p._id.toString(),
+  titre: p.titre,
+  description: p.description,
+  objectif: p.objectif,
+  dateDebut: p.dateDebut,
+  deadline: p.deadline,
+  statut: p.statut,
+  progression: p.progression,
+
+  enseignantId: p.enseignantId ? p.enseignantId._id.toString() : null,
+
+  enseignant: p.enseignantId
+    ? `${p.enseignantId.nom} ${p.enseignantId.prenom}`
+    : 'Aucun enseignant',
+
+  etudiantsCount: p.etudiantIds ? p.etudiantIds.length : 0,
+
+  etudiants: p.etudiantIds
+    ? p.etudiantIds.map(e => ({
         id: e._id.toString(),
         nom: e.nom,
         prenom: e.prenom,
         email: e.email,
-      })) : [],
-      createdAt: p.createdAt,
-    }));
+      }))
+    : [],
+
+  createdAt: p.createdAt,
+}));
 
     return res.status(200).json({
       success: true,
@@ -537,7 +546,7 @@ async function createClubProject(req, res, next) {
       objectif,
       dateDebut: dateDebut ? new Date(dateDebut) : new Date(),
       deadline: new Date(deadline),
-      enseignantId: enseignantId || req.user._id,
+      enseignantId: enseignantId || null,
       clubId: req.user.clubId,
       statut: 'en_attente',
     });
