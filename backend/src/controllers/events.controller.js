@@ -439,6 +439,9 @@ async function listEvents(req, res, next) {
     const limit = toPositiveInt(req.query.limit, 10);
     const sortBy = ['date', 'createdAt'].includes(req.query.sortBy) ? req.query.sortBy : 'date';
     const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
+    const userCompetenceIds = Array.isArray(req.user?.competenceIds)
+      ? req.user.competenceIds.map((competenceId) => String(competenceId)).filter(Boolean)
+      : [];
 
     if (req.query.type && !EVENT_TYPES.includes(req.query.type)) {
       return sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, 'Invalid type filter');
@@ -459,12 +462,20 @@ async function listEvents(req, res, next) {
     }
 
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    let searchCompetenceIds = [];
 
     if (search) {
+      searchCompetenceIds = await Competence.find({
+        nom: { $regex: search, $options: 'i' },
+      }).distinct('_id');
+
       filter.$or = [
         { titre: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
         { lieu: { $regex: search, $options: 'i' } },
+        ...(searchCompetenceIds.length > 0
+          ? [{ competenceIds: { $in: searchCompetenceIds } }]
+          : []),
       ];
     }
 
@@ -478,14 +489,43 @@ async function listEvents(req, res, next) {
       Evenement.find(filter)
         .populate('clubId', 'nom')
         .populate('coOrganizerClubIds', 'nom')
-        .populate('competenceIds', 'nom')
-        .sort({ [sortBy]: sortOrder })
-        .skip((page - 1) * limit)
-        .limit(limit),
+        .populate('competenceIds', 'nom'),
       Evenement.countDocuments(filter),
     ]);
 
-    const eventIds = items.map((event) => event._id);
+    const sortField = sortBy === 'createdAt' ? 'createdAt' : 'date';
+    const scoreEvent = (event) => {
+      if (userCompetenceIds.length === 0) {
+        return 0;
+      }
+
+      const eventCompetenceIds = Array.isArray(event.competenceIds)
+        ? event.competenceIds.map((competenceId) => String(competenceId?._id || competenceId)).filter(Boolean)
+        : [];
+
+      return eventCompetenceIds.filter((competenceId) => userCompetenceIds.includes(competenceId)).length;
+    };
+
+    const sortedItems = items.sort((left, right) => {
+      const leftScore = scoreEvent(left);
+      const rightScore = scoreEvent(right);
+
+      if (leftScore !== rightScore) {
+        return rightScore - leftScore;
+      }
+
+      const leftValue = new Date(left[sortField] || 0).getTime();
+      const rightValue = new Date(right[sortField] || 0).getTime();
+      if (leftValue !== rightValue) {
+        return (leftValue - rightValue) * sortOrder;
+      }
+
+      return new Date(left.createdAt || 0).getTime() - new Date(right.createdAt || 0).getTime();
+    });
+
+    const paginatedItems = sortedItems.slice((page - 1) * limit, page * limit);
+
+    const eventIds = paginatedItems.map((event) => event._id);
     const participationCounts = await ParticipationEvenement.aggregate([
       {
         $match: {
@@ -506,7 +546,7 @@ async function listEvents(req, res, next) {
     );
 
     return sendSuccess(res, 200, {
-      items: items.map((event) => normalizeEvent(event, countMap.get(event._id.toString()) || 0)),
+      items: paginatedItems.map((event) => normalizeEvent(event, countMap.get(event._id.toString()) || 0)),
       pagination: {
         page,
         limit,
