@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Users, ShieldCheck, MapPin, Sparkles } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { fetchClubs, fetchMyClubMembershipRequests, requestClubMembership } from "@/services/api";
+import { cancelClubMembershipRequest, fetchClubs, fetchMyClubMembershipRequests, requestClubMembership } from "@/services/api";
 
 type ClubItem = {
   id: string;
@@ -80,6 +80,26 @@ const Clubs = () => {
     }
   };
 
+  const handleCancelRequest = async (clubId: string, requestId: string) => {
+    try {
+      setRequestingId(clubId);
+      await cancelClubMembershipRequest(requestId);
+      setRequests((current) => current.filter((request) => request.id !== requestId));
+      toast({
+        title: "Demande annulée",
+        description: "Vous pouvez refaire une demande quand vous voulez.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error?.message || "Impossible d'annuler la demande.",
+        variant: "destructive",
+      });
+    } finally {
+      setRequestingId(null);
+    }
+  };
+
   const isStudent = user?.role === "etudiant";
 
   return (
@@ -133,15 +153,10 @@ const Clubs = () => {
                   <CardContent className="space-y-4">
                     {isStudent ? (
                       <div className="flex flex-col gap-3">
-                        {isMember ? (
-                          <Badge className="w-fit bg-emerald-600 text-white">Déjà membre</Badge>
-                        ) : isPending ? (
-                          <Badge variant="outline" className="w-fit">Demande en attente</Badge>
-                        ) : null}
                         <Button
                           variant="hero"
-                          disabled={Boolean(requestingId) || isPending || isMember}
-                          onClick={() => handleRequest(club.id)}
+                          disabled={requestingId === club.id || isMember}
+                          onClick={() => (isPending && request ? handleCancelRequest(club.id, request.id) : handleRequest(club.id))}
                         >
                           {requestingId === club.id ? (
                             <>
@@ -151,9 +166,9 @@ const Clubs = () => {
                           ) : isMember ? (
                             "Membre"
                           ) : isPending ? (
-                            "Demande envoyée"
+                              "Annuler la demande"
                           ) : (
-                            "Je veux être membre"
+                              "Je veux rejoindre ce club"
                           )}
                         </Button>
                       </div>

@@ -236,38 +236,52 @@ const Profile = () => {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                  <div className="text-sm font-medium text-foreground">Mes clubs</div>
-                  {clubMembershipRequests.filter((request) => request.status === "accepted").length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Aucune adhésion validée.</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {clubMembershipRequests
-                        .filter((request) => request.status === "accepted")
-                        .map((request) => (
-                          <Badge key={request.id} className="bg-emerald-600 text-white">
-                            {request.club?.nom || "Club"}
-                          </Badge>
-                        ))}
-                    </div>
-                  )}
+                <div className="flex items-start gap-3">
+                  <Users className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Mes clubs</div>
+                    {clubMembershipRequests.filter((request) => request.status === "accepted").length === 0 ? (
+                      <div className="text-sm text-foreground">Aucune adhésion validée.</div>
+                    ) : (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {clubMembershipRequests
+                          .filter((request) => request.status === "accepted")
+                          .map((request) => (
+                            <Badge
+                              key={request.id}
+                              variant="secondary"
+                              className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground"
+                            >
+                              {request.club?.nom || "Club"}
+                            </Badge>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                  <div className="text-sm font-medium text-foreground">Demandes en attente</div>
-                  {clubMembershipRequests.filter((request) => request.status === "pending").length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Aucune demande en attente.</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {clubMembershipRequests
-                        .filter((request) => request.status === "pending")
-                        .map((request) => (
-                          <Badge key={request.id} variant="outline">
-                            {request.club?.nom || "Club"}
-                          </Badge>
-                        ))}
-                    </div>
-                  )}
+                <div className="flex items-start gap-3">
+                  <CalendarDays className="w-4 h-4 mt-1 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Demandes en attente</div>
+                    {clubMembershipRequests.filter((request) => request.status === "pending").length === 0 ? (
+                      <div className="text-sm text-foreground">Aucune demande en attente.</div>
+                    ) : (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {clubMembershipRequests
+                          .filter((request) => request.status === "pending")
+                          .map((request) => (
+                            <Badge
+                              key={request.id}
+                              variant="secondary"
+                              className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground"
+                            >
+                              {request.club?.nom || "Club"}
+                            </Badge>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

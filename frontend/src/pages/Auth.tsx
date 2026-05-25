@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
@@ -76,6 +77,7 @@ const Auth = () => {
   const [signupClubSpecialite, setSignupClubSpecialite] = useState("");
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
   const [competences, setCompetences] = useState<Array<{ id: string; nom: string }>>([]);
   const [selectedCompetenceIds, setSelectedCompetenceIds] = useState<string[]>([]);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -145,6 +147,8 @@ const Auth = () => {
       if (error) {
         if (error.message.toLowerCase().includes("verifier votre adresse email")) {
           setPendingVerificationEmail(loginEmail);
+          setVerificationCode("");
+          setShowVerificationDialog(true);
           setAuthTab("signup");
         }
         if (error.message.includes("Invalid login credentials")) {
@@ -251,6 +255,7 @@ const Auth = () => {
       } else {
         setPendingVerificationEmail(signupEmail);
         setVerificationCode("");
+        setShowVerificationDialog(true);
         setAuthTab("signup");
         toast({
           title: "Code envoyé",
@@ -313,6 +318,7 @@ const Auth = () => {
         });
         setPendingVerificationEmail("");
         setVerificationCode("");
+        setShowVerificationDialog(false);
       } else {
         toast({
           title: "Email verifie",
@@ -320,6 +326,7 @@ const Auth = () => {
         });
         setPendingVerificationEmail("");
         setVerificationCode("");
+        setShowVerificationDialog(false);
         navigate("/");
       }
     } catch (error) {
@@ -629,7 +636,7 @@ const Auth = () => {
                   <div className="text-center">
                     <button
                       type="button"
-                      onClick={() => setShowForgotPassword((prev) => !prev)}
+                      onClick={() => setShowForgotPassword(true)}
                       className="text-sm text-primary hover:underline"
                     >
                       Mot de passe oublié ?
@@ -637,16 +644,16 @@ const Auth = () => {
                   </div>
                 </form>
 
-                {showForgotPassword && (
-                  <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 space-y-4">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">Réinitialiser le mot de passe</p>
-                      <p className="text-sm text-muted-foreground">
+                <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+                      <DialogDescription>
                         Entrez votre email et nous vous enverrons un lien de réinitialisation.
-                      </p>
-                    </div>
+                      </DialogDescription>
+                    </DialogHeader>
 
-                    <form onSubmit={handleForgotPassword} className="space-y-3">
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="forgot-password-email">Email</Label>
                         <Input
@@ -667,8 +674,8 @@ const Auth = () => {
                         </Button>
                       </div>
                     </form>
-                  </div>
-                )}
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
 
               <TabsContent value="signup">
@@ -866,18 +873,18 @@ const Auth = () => {
                   </Button>
                 </form>
 
-                {pendingVerificationEmail && (
-                  <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 space-y-4">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">Verification email requise</p>
-                      <p className="text-sm text-muted-foreground">
-                        Un code a ete envoye a {pendingVerificationEmail}. Saisissez-le pour activer votre compte.
-                      </p>
-                    </div>
+                <Dialog open={showVerificationDialog && Boolean(pendingVerificationEmail)} onOpenChange={setShowVerificationDialog}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Vérifier votre email</DialogTitle>
+                      <DialogDescription>
+                        Saisissez le code OTP envoyé à {pendingVerificationEmail || "votre adresse email"}.
+                      </DialogDescription>
+                    </DialogHeader>
 
-                    <form onSubmit={handleVerifyEmail} className="space-y-3">
+                    <form onSubmit={handleVerifyEmail} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="verification-code">Code de verification</Label>
+                        <Label htmlFor="verification-code">Code de vérification</Label>
                         <Input
                           id="verification-code"
                           inputMode="numeric"
@@ -894,10 +901,10 @@ const Auth = () => {
                           {isLoading ? (
                             <>
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Verification...
+                              Vérification...
                             </>
                           ) : (
-                            "Verifier l'email"
+                            "Vérifier l'email"
                           )}
                         </Button>
                         <Button type="button" variant="outline" className="flex-1" onClick={handleResendCode} disabled={isLoading}>
@@ -905,8 +912,8 @@ const Auth = () => {
                         </Button>
                       </div>
                     </form>
-                  </div>
-                )}
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
             </Tabs>
           </CardContent>
