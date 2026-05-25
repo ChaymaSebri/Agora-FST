@@ -47,6 +47,7 @@ function normalizeEvent(doc, participantsCount = 0) {
   const source = typeof doc.toObject === 'function' ? doc.toObject() : doc;
   const clubSource = source.clubId;
   const coOrganizerSources = Array.isArray(source.coOrganizerClubIds) ? source.coOrganizerClubIds : [];
+  const competenceSources = Array.isArray(source.competenceIds) ? source.competenceIds : [];
   const clubId = clubSource && typeof clubSource === 'object' && clubSource._id
     ? clubSource._id.toString()
     : (clubSource ? clubSource.toString() : null);
@@ -62,6 +63,9 @@ function normalizeEvent(doc, participantsCount = 0) {
     .filter(Boolean);
   const coOrganizerClubNames = coOrganizerSources
     .map((club) => (club && typeof club === 'object' ? club.nom : null))
+    .filter(Boolean);
+  const competenceNames = competenceSources
+    .map((competence) => (competence && typeof competence === 'object' ? competence.nom : null))
     .filter(Boolean);
 
   return {
@@ -80,6 +84,7 @@ function normalizeEvent(doc, participantsCount = 0) {
     competenceIds: Array.isArray(source.competenceIds)
       ? source.competenceIds.map((competenceId) => (competenceId && competenceId._id ? competenceId._id.toString() : String(competenceId)))
       : [],
+    competenceNames,
     coOrganizerClubIds,
     coOrganizerClubNames,
     imageUrl: source.imageUrl || null,
@@ -385,11 +390,21 @@ async function listEvents(req, res, next) {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
 
     if (search) {
+      const matchingCompetences = await Competence.find({
+        nom: { $regex: search, $options: 'i' },
+      }).select('_id');
+
       filter.$or = [
         { titre: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
         { lieu: { $regex: search, $options: 'i' } },
       ];
+
+      if (matchingCompetences.length > 0) {
+        filter.$or.push({
+          competenceIds: { $in: matchingCompetences.map((competence) => competence._id) },
+        });
+      }
     }
 
     if (req.query.dateFrom || req.query.dateTo) {
@@ -402,6 +417,7 @@ async function listEvents(req, res, next) {
       Evenement.find(filter)
         .populate('clubId', 'nom')
         .populate('coOrganizerClubIds', 'nom')
+        .populate('competenceIds', 'nom')
         .sort({ [sortBy]: sortOrder })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -458,7 +474,8 @@ async function getEventById(req, res, next) {
 
     const event = await Evenement.findById(id)
       .populate('clubId', 'nom')
-      .populate('coOrganizerClubIds', 'nom');
+      .populate('coOrganizerClubIds', 'nom')
+      .populate('competenceIds', 'nom');
 
     if (!event) {
       return sendError(res, 404, ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');

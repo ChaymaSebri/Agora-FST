@@ -10,6 +10,7 @@ import AdminPanel from "./pages/AdminPanel";
 import Admin from "./pages/Admin";
 import Clubs from "./pages/Clubs";
 import ClubRequests from "./pages/ClubRequests";
+import ClubInvitations from "./pages/ClubInvitations";
 import CreateEvent from "./pages/CreateEvent";
 import EditEvent from "./pages/EditEvent";
 import Profile from "./pages/Profile";
@@ -160,6 +161,14 @@ const App = () => (
                   <ProtectedRoute requireRole="club">
                     <Navbar />
                     <ClubRequests />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/club-invitations"
+                element={
+                  <ProtectedRoute requireRole="club">
+                    <ClubInvitations />
                   </ProtectedRoute>
                 }
               />
