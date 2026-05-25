@@ -44,6 +44,18 @@ const Events = () => {
   const isClubUser = user?.role === "club";
   const canCurrentUserRegister = !user || user?.role === "etudiant" || user?.role === "enseignant";
 
+  const getEventStartTime = (event: Event) => {
+    const normalizedDate = event.date ? String(event.date).slice(0, 10) : "";
+    const normalizedTime = event.time ? String(event.time).slice(0, 5) : "00:00";
+    const parsed = normalizedDate
+      ? new Date(`${normalizedDate}T${normalizedTime}:00Z`)
+      : new Date(0);
+
+    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+  };
+
+  const isEventPast = (event: Event) => getEventStartTime(event).getTime() < Date.now();
+
   useEffect(() => {
     setPage(1);
   }, [searchTerm, filterType]);
@@ -109,7 +121,16 @@ const Events = () => {
     loadRegistrationState();
   }, [events, canCurrentUserRegister, currentUserId]);
 
-  const filteredEvents = events;
+  const filteredEvents = [...events].sort((left, right) => {
+    const leftPast = isEventPast(left);
+    const rightPast = isEventPast(right);
+
+    if (leftPast !== rightPast) {
+      return leftPast ? 1 : -1;
+    }
+
+    return getEventStartTime(left).getTime() - getEventStartTime(right).getTime();
+  });
 
   const updateEventCounts = (id: string, delta: number) => {
     setEvents((prev) =>
@@ -334,6 +355,7 @@ const Events = () => {
               && event.coOrganizerClubIds.some((clubId) => String(clubId) === currentClubId),
             );
             const canManageEvent = isClubUser && (isOwnerByClub || isOwnerByOrganisateur || isCoOrganizerClub);
+            const isPast = isEventPast(event);
 
             return (
             <EventCard
@@ -348,6 +370,7 @@ const Events = () => {
               isCancelling={busyAction?.id === event.id && busyAction.type === "cancel"}
               canManage={canManageEvent}
               canRegister={canCurrentUserRegister}
+              isPast={isPast}
             />
             );
           })}

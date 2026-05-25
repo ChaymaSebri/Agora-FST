@@ -56,6 +56,7 @@ interface EventCardProps {
   isDeleting?: boolean;
   isRegistering?: boolean;
   isCancelling?: boolean;
+  isPast?: boolean;
   canManage?: boolean;
   canRegister?: boolean;
 }
@@ -112,6 +113,7 @@ export const EventCard = ({
   isDeleting = false,
   isRegistering = false,
   isCancelling = false,
+  isPast = false,
   canManage = false,
   canRegister = true,
 }: EventCardProps) => {
@@ -143,7 +145,9 @@ export const EventCard = ({
     ? "Inscription..."
     : isCancelling
       ? "Annulation..."
-      : isRegistered
+      : isPast
+        ? "Événement passé"
+        : isRegistered
         ? "Annuler inscription"
         : spotsLeft === 0
           ? "Complet"
@@ -323,8 +327,11 @@ export const EventCard = ({
             <Button
               variant={isRegistered ? "outline" : spotsLeft === 0 ? "outline" : "default"}
               className="w-full"
-              disabled={isBusy || (spotsLeft === 0 && !isRegistered)}
+              disabled={isBusy || isPast || (spotsLeft === 0 && !isRegistered)}
               onClick={() => {
+                if (isPast) {
+                  return;
+                }
                 if (isRegistered) {
                   onCancelRegistration?.(event.id);
                   return;
