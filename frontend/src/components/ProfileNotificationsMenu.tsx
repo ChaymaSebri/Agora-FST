@@ -1,14 +1,13 @@
 import { useNotifications } from "@/hooks/useNotifications";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Bell, Mail } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface ProfileNotificationsMenuProps {
   onOpenNotifications: () => void;
-  onOpenInvitations: () => void;
 }
 
-export function ProfileNotificationsMenu({ onOpenNotifications, onOpenInvitations }: ProfileNotificationsMenuProps) {
+export function ProfileNotificationsMenu({ onOpenNotifications }: ProfileNotificationsMenuProps) {
   const { unreadCount } = useNotifications();
 
   return (
@@ -26,16 +25,6 @@ export function ProfileNotificationsMenu({ onOpenNotifications, onOpenInvitation
             {unreadCount}
           </Badge>
         )}
-      </DropdownMenuItem>
-
-      <DropdownMenuItem
-        onSelect={onOpenInvitations}
-        className="cursor-pointer flex items-center justify-between gap-2"
-      >
-        <span className="flex items-center gap-2">
-          <Mail className="w-4 h-4" />
-          Invitations
-        </span>
       </DropdownMenuItem>
     </>
   );

@@ -58,6 +58,8 @@ export function ClubEventManagement() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const isPastEvent = (eventDate: string) => new Date(eventDate).getTime() < Date.now();
+
   useEffect(() => {
     loadEvents();
   }, []);
@@ -307,6 +309,7 @@ export function ClubEventManagement() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleOpenEditDialog(event)}
+                        disabled={isPastEvent(event.date)}
                       >
                         Modifier
                       </Button>

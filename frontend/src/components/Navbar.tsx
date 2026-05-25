@@ -21,7 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import { fetchClubMembershipRequests } from "@/services/api";
 import { ProfileNotificationsMenu } from "@/components/ProfileNotificationsMenu";
 import { NotificationDialog } from "@/components/NotificationPanel";
-import { useNavigate } from "react-router-dom";
 
 const navItems = [
   { name: "Accueil", path: "/" },
@@ -32,7 +31,6 @@ const navItems = [
 
 export const Navbar = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [pendingMembershipCount, setPendingMembershipCount] = useState(0);
@@ -138,7 +136,6 @@ export const Navbar = () => {
                   <DropdownMenuSeparator />
                   <ProfileNotificationsMenu
                     onOpenNotifications={() => setNotificationsOpen(true)}
-                    onOpenInvitations={() => navigate('/club-invitations')}
                   />
                   {user?.role === "club" && (
                     <>
