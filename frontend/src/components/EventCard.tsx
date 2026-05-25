@@ -126,6 +126,7 @@ export const EventCard = ({
   const [invitingTeacher, setInvitingTeacher] = useState(false);
   const attendees = event.participantsCount ?? event.attendees;
   const spotsLeft = event.maxAttendees - attendees;
+  const isPastEvent = new Date(event.date).getTime() < Date.now();
   const organizerClubNames = Array.from(
     new Set(
       [
@@ -358,7 +359,7 @@ export const EventCard = ({
                   size="sm"
                   className="w-full justify-center hover:bg-primary/80"
                   onClick={() => navigate(`/events/${event.id}/edit`)}
-                  disabled={isBusy}
+                  disabled={isBusy || isPastEvent}
                 >
                   Modifier
                 </Button>
@@ -387,7 +388,7 @@ export const EventCard = ({
 
               <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-center gap-2" disabled={isBusy}>
+                  <Button variant="outline" size="sm" className="w-full justify-center gap-2" disabled={isBusy || isPastEvent}>
                     <Mail className="h-4 w-4" />
                     Inviter un enseignant
                   </Button>

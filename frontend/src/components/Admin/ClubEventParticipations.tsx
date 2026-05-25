@@ -51,6 +51,8 @@ export function ClubEventParticipations() {
   const [teacherId, setTeacherId] = useState('');
   const { toast } = useToast();
 
+  const isPastEvent = (eventDate: string) => new Date(eventDate).getTime() < Date.now();
+
   useEffect(() => {
     loadEvents();
   }, []);
@@ -214,7 +216,7 @@ export function ClubEventParticipations() {
 
                   <Dialog open={teacherDialog} onOpenChange={setTeacherDialog}>
                     <DialogTrigger asChild>
-                      <Button variant="secondary">+ Inviter un enseignant</Button>
+                      <Button variant="secondary" disabled={selectedEvent ? isPastEvent(selectedEvent.date) : false}>+ Inviter un enseignant</Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
