@@ -103,6 +103,7 @@ function toUiEvent(item) {
     coOrganizerClubIds: Array.isArray(item.coOrganizerClubIds) ? item.coOrganizerClubIds : [],
     coOrganizerClubNames: Array.isArray(item.coOrganizerClubNames) ? item.coOrganizerClubNames : [],
     competenceIds: Array.isArray(item.competenceIds) ? item.competenceIds : [],
+    competenceNames: Array.isArray(item.competenceNames) ? item.competenceNames : [],
   };
 }
 

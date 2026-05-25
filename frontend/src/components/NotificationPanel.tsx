@@ -6,15 +6,32 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell, Check, Trash2, AlertCircle, CheckCircle, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import notificationService from "@/services/notification.service";
+import { useAuth } from "@/contexts/AuthContext";
+import * as clubDashboardApi from "@/services/club-dashboard.api";
 
 interface NotificationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+type ClubTeacherInvitation = {
+  id: string;
+  eventId: string;
+  eventTitle: string;
+  enseignantId: string;
+  enseignant: string;
+  email: string;
+  grade: string;
+  statut: "en_attente" | "accepte" | "refuse";
+  message?: string;
+  dateInvitation: string;
+  dateReponse?: string;
+};
+
 export function NotificationDialog({ open, onOpenChange }: NotificationDialogProps) {
+  const { user } = useAuth();
   const { 
     notifications, 
     unreadCount, 
@@ -27,6 +44,8 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
     // (the hook exposes markAllAsRead for backward compatibility)
     loadNotifications,
   } = useNotifications();
+  const [clubTeacherInvitations, setClubTeacherInvitations] = useState<ClubTeacherInvitation[]>([]);
+  const [loadingClubInvitations, setLoadingClubInvitations] = useState(false);
   const relevantNotifications = notifications;
 
   // Recharger les notifications quand la dialog s'ouvre
@@ -58,6 +77,57 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
       })();
     }
   }, [open, loadNotifications, markAllAsRead]);
+
+  useEffect(() => {
+    if (!open || user?.role !== "club") {
+      setClubTeacherInvitations([]);
+      return;
+    }
+
+    const loadClubTeacherInvitations = async () => {
+      try {
+        setLoadingClubInvitations(true);
+        const events = await clubDashboardApi.listClubEvents();
+        const invitationsByEvent = await Promise.allSettled(
+          (events || []).map(async (event: any) => {
+            const eventId = event.id || event._id;
+            const eventTitle = event.titre || event.title || "Événement";
+            const invitations = await clubDashboardApi.getEventTeacherInvitations(eventId);
+
+            return (invitations || []).map((invitation: any) => ({
+              id: invitation.id,
+              eventId,
+              eventTitle,
+              enseignantId: invitation.enseignantId,
+              enseignant: invitation.enseignant,
+              email: invitation.email,
+              grade: invitation.grade,
+              statut: invitation.statut,
+              message: invitation.message,
+              dateInvitation: invitation.dateInvitation,
+              dateReponse: invitation.dateReponse,
+            })) as ClubTeacherInvitation[];
+          }),
+        );
+
+        const flattened = invitationsByEvent
+          .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+          .sort(
+            (left, right) =>
+              new Date(right.dateInvitation).getTime() - new Date(left.dateInvitation).getTime(),
+          );
+
+        setClubTeacherInvitations(flattened);
+      } catch (error) {
+        console.error("Erreur lors du chargement des invitations d'enseignants:", error);
+        setClubTeacherInvitations([]);
+      } finally {
+        setLoadingClubInvitations(false);
+      }
+    };
+
+    loadClubTeacherInvitations();
+  }, [open, user?.role]);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -120,6 +190,28 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
 
   const handleDelete = async (notificationId: string) => {
     await deleteNotification(notificationId);
+  };
+
+  const getInvitationLabel = (status: ClubTeacherInvitation["statut"]) => {
+    switch (status) {
+      case "accepte":
+        return "Acceptée";
+      case "refuse":
+        return "Refusée";
+      default:
+        return "En attente";
+    }
+  };
+
+  const getInvitationVariant = (status: ClubTeacherInvitation["statut"]) => {
+    switch (status) {
+      case "accepte":
+        return "default" as const;
+      case "refuse":
+        return "destructive" as const;
+      default:
+        return "outline" as const;
+    }
   };
 
   return (
@@ -209,6 +301,76 @@ export function NotificationDialog({ open, onOpenChange }: NotificationDialogPro
                 ))}
               </div>
             </ScrollArea>
+
+            {user?.role === "club" && (
+              <div className="mt-4 border-t pt-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Invitations envoyées aux enseignants
+                  </h3>
+                  <Badge variant="secondary">{clubTeacherInvitations.length}</Badge>
+                </div>
+
+                {loadingClubInvitations ? (
+                  <div className="py-4 text-center text-sm text-muted-foreground">
+                    Chargement des invitations...
+                  </div>
+                ) : clubTeacherInvitations.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                    Aucune invitation envoyée pour le moment.
+                  </div>
+                ) : (
+                  <ScrollArea className="mt-2 max-h-56 pr-4">
+                    <div className="space-y-2">
+                      {clubTeacherInvitations.map((invitation) => (
+                        <div
+                          key={invitation.id}
+                          className="rounded-lg border border-border bg-background p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {invitation.enseignant}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {invitation.email}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {invitation.eventTitle}
+                              </p>
+                            </div>
+                            <Badge variant={getInvitationVariant(invitation.statut)}>
+                              {getInvitationLabel(invitation.statut)}
+                            </Badge>
+                          </div>
+                          {invitation.grade && (
+                            <p className="mt-2 text-xs text-muted-foreground">{invitation.grade}</p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                            <span>
+                              Envoyée{' '}
+                              {formatDistanceToNow(new Date(invitation.dateInvitation), {
+                                addSuffix: true,
+                                locale: fr,
+                              })}
+                            </span>
+                            {invitation.dateReponse && (
+                              <span>
+                                Réponse{' '}
+                                {formatDistanceToNow(new Date(invitation.dateReponse), {
+                                  addSuffix: true,
+                                  locale: fr,
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </div>
+            )}
 
             {unreadCount > 0 && (
               <div className="pt-4 border-t">
