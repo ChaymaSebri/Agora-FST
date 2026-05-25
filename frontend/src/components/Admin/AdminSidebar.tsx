@@ -28,8 +28,7 @@ export default function AdminSidebar({ activeTab, setActiveTab }: AdminSidebarPr
     <aside className="sticky top-20 h-[calc(100vh-5rem)] w-64 shrink-0 border-r border-gray-200 bg-white shadow-sm">
       <div className="flex h-full flex-col">
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-blue-600">FST Agora</h1>
-        <p className="text-sm text-gray-500 mt-1">Admin Panel</p>
+        <h1 className="text-2xl font-bold text-gray-600">Admin Panel</h1>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-2">

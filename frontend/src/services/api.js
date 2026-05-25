@@ -185,6 +185,15 @@ export async function requestClubMembership(clubId) {
   }
 }
 
+export async function cancelClubMembershipRequest(requestId) {
+  try {
+    const response = await api.delete(`/clubs/membership-requests/${requestId}`);
+    return extractResponse(response);
+  } catch (error) {
+    rethrowApiError(error);
+  }
+}
+
 export async function fetchMyClubMembershipRequests() {
   try {
     const response = await api.get('/clubs/membership-requests/me');

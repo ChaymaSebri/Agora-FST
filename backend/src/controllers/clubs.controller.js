@@ -212,6 +212,39 @@ async function requestMembership(req, res, next) {
   }
 }
 
+async function cancelMembershipRequest(req, res, next) {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      throw new ApiError(401, 'Authentification requise');
+    }
+
+    const request = await ClubMembershipRequest.findOne({ _id: requestId, memberId: userId });
+
+    if (!request) {
+      throw new ApiError(404, 'Demande introuvable');
+    }
+
+    if (request.status !== 'pending') {
+      throw new ApiError(409, 'Seule une demande en attente peut être annulée');
+    }
+
+    await ClubMembershipRequest.deleteOne({ _id: request._id });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: request._id.toString(),
+        status: 'cancelled',
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function listMyMembershipRequests(req, res, next) {
   try {
     const requests = await ClubMembershipRequest.find({ memberId: req.user._id })
@@ -345,6 +378,7 @@ module.exports = {
   listClubs,
   listClubStudents,
   requestMembership,
+  cancelMembershipRequest,
   listMyMembershipRequests,
   listClubMembershipRequests,
   resolveMembershipRequest,
